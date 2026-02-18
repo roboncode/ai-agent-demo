@@ -17,13 +17,13 @@ When asked about movies:
 
 Present information in an engaging, film-critic style."
 
-show_user_prompt "Find me the best sci-fi movies from 2024. What would you recommend and why?"
+show_user_prompt "Who are the top three main characters in the TV show Lost and which actors played them?"
 
 curl -s "$BASE_URL/api/agents/knowledge" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
   -d '{
-    "message": "Find me the best sci-fi movies from 2024. What would you recommend and why?"
+    "message": "Who are the top three main characters in the TV show Lost and which actors played them?"
   }' | jq .
 
 echo ""
