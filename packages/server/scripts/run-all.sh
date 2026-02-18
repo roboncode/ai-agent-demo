@@ -33,6 +33,8 @@ SCRIPTS=(
   "10-task-agent.sh"
   "11-coding-agent.sh"
   "12-auth-demo.sh"
+  "14-structured-agent.sh"
+  "15-guardrails-agent.sh"
 )
 
 SCRIPT_DIR="$(dirname "$0")"

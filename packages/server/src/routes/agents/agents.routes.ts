@@ -125,6 +125,35 @@ router.openapi(
   handlers.handleHumanInLoopApprove
 );
 
+// Recipe agent (structured output)
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/recipe",
+    tags: ["Agents"],
+    summary: "Structured output recipe agent",
+    description: "Uses generateObject with a Zod schema to return a typed recipe JSON object",
+    request: { body: agentBody },
+    responses: agentResponse,
+  }),
+  handlers.handleRecipeAgent
+);
+
+// Guardrails agent (finance advisor with input validation)
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/guardrails",
+    tags: ["Agents"],
+    summary: "Guardrails finance advisor agent",
+    description:
+      "Two-phase agent: classifies input as finance-related or off-topic, then generates advice only for allowed queries",
+    request: { body: agentBody },
+    responses: agentResponse,
+  }),
+  handlers.handleGuardrailsAgent
+);
+
 // Task agent (parallel execution)
 router.openapi(
   createRoute({

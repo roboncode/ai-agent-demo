@@ -17,6 +17,8 @@ import {
 import { runWeatherAgent } from "../../agents/weather-agent.js";
 import { runHackernewsAgent } from "../../agents/hackernews-agent.js";
 import { runKnowledgeAgent } from "../../agents/knowledge-agent.js";
+import { runRecipeAgent } from "../../agents/recipe-agent.js";
+import { runGuardrailsAgent } from "../../agents/guardrails-agent.js";
 
 function conversationId(existing?: string) {
   return existing ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -96,6 +98,22 @@ export async function handleHumanInLoopApprove(c: Context) {
   const { id, approved } = await c.req.json();
   const result = await approveAction(id, approved);
   return c.json(result);
+}
+
+// --- Structured output agent (JSON, not SSE) ---
+
+export async function handleRecipeAgent(c: Context) {
+  const { message, conversationId: cid, model } = await c.req.json();
+  const result = await runRecipeAgent(message, model);
+  return c.json({ ...result, conversationId: conversationId(cid) });
+}
+
+// --- Guardrails agent (JSON, not SSE) ---
+
+export async function handleGuardrailsAgent(c: Context) {
+  const { message, conversationId: cid, model } = await c.req.json();
+  const result = await runGuardrailsAgent(message, model);
+  return c.json({ ...result, conversationId: conversationId(cid) });
 }
 
 // --- Task agent (custom hybrid streaming) ---
