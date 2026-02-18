@@ -7,11 +7,13 @@ import SlideNav from "./components/SlideNav";
 import Terminal from "./components/Terminal";
 import RunButton from "./components/RunButton";
 import ApprovalButtons from "./components/ApprovalButtons";
+import ShortcutsHelp from "./components/ShortcutsHelp";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
 
 function App() {
   const [slideIndex, setSlideIndex] = createSignal(0);
+  const [showShortcuts, setShowShortcuts] = createSignal(false);
   const [lines, setLines] = createSignal<TerminalLine[]>([]);
   const [streamingText, setStreamingText] = createSignal("");
   const [isStreaming, setIsStreaming] = createSignal(false);
@@ -39,7 +41,6 @@ function App() {
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
       setSlideIndex(index);
-      clearTerminal();
       setIsRunning(false);
       setIsStreaming(false);
     }
@@ -82,6 +83,16 @@ function App() {
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       navigate(slideIndex() - 1);
+    } else if (e.key === "Enter" && hasDemo() && !awaitingApproval()) {
+      e.preventDefault();
+      handleRun();
+    } else if (e.key === "k" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+      e.preventDefault();
+      clearTerminal();
+    } else if (e.key === "?" || e.key === "/") {
+      setShowShortcuts((v) => !v);
+    } else if (e.key === "Escape") {
+      setShowShortcuts(false);
     }
   }
 
@@ -160,7 +171,13 @@ function App() {
         total={slides.length}
         current={slideIndex()}
         onNavigate={navigate}
+        onShowShortcuts={() => setShowShortcuts((v) => !v)}
       />
+
+      {/* Keyboard shortcuts popover */}
+      <Show when={showShortcuts()}>
+        <ShortcutsHelp onClose={() => setShowShortcuts(false)} />
+      </Show>
     </div>
   );
 }

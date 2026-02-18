@@ -1,9 +1,11 @@
 import { type Component, For } from "solid-js";
+import { FiChevronLeft, FiChevronRight, FiCommand } from "solid-icons/fi";
 
 interface Props {
   total: number;
   current: number;
   onNavigate: (index: number) => void;
+  onShowShortcuts: () => void;
 }
 
 const SlideNav: Component<Props> = (props) => {
@@ -28,9 +30,38 @@ const SlideNav: Component<Props> = (props) => {
         </For>
       </div>
 
-      <div class="flex items-center gap-1.5 font-mono text-[11px] text-muted">
-        <kbd class="rounded border border-border-subtle bg-raised/50 px-1.5 py-0.5 text-[10px]">←</kbd>
-        <kbd class="rounded border border-border-subtle bg-raised/50 px-1.5 py-0.5 text-[10px]">→</kbd>
+      <div class="flex items-center gap-1">
+        {/* Prev */}
+        <button
+          onClick={() => props.onNavigate(props.current - 1)}
+          disabled={props.current === 0}
+          class="flex h-6 w-6 items-center justify-center rounded text-muted transition-colors hover:text-primary disabled:opacity-30"
+          title="Previous slide (←)"
+        >
+          <FiChevronLeft size={15} />
+        </button>
+
+        {/* Next */}
+        <button
+          onClick={() => props.onNavigate(props.current + 1)}
+          disabled={props.current === props.total - 1}
+          class="flex h-6 w-6 items-center justify-center rounded text-muted transition-colors hover:text-primary disabled:opacity-30"
+          title="Next slide (→)"
+        >
+          <FiChevronRight size={15} />
+        </button>
+
+        {/* Divider */}
+        <div class="mx-1 h-3.5 w-px bg-border-subtle" />
+
+        {/* Shortcuts */}
+        <button
+          onClick={props.onShowShortcuts}
+          title="Keyboard shortcuts (?)"
+          class="flex h-6 w-6 items-center justify-center rounded text-muted transition-colors hover:text-primary hover:shadow-[0_0_8px_rgba(52,216,204,0.15)]"
+        >
+          <FiCommand size={14} />
+        </button>
       </div>
     </div>
   );

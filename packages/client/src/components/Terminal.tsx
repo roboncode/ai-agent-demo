@@ -1,6 +1,7 @@
 import { type Component, For, createEffect } from "solid-js";
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
+import { FiTerminal } from "solid-icons/fi";
 
 interface Props {
   lines: TLine[];
@@ -30,9 +31,12 @@ const Terminal: Component<Props> = (props) => {
           <div class="h-3 w-3 rounded-full bg-[#febc2e] shadow-[0_0_4px_rgba(254,188,46,0.3)]" />
           <div class="h-3 w-3 rounded-full bg-[#28c840] shadow-[0_0_4px_rgba(40,200,64,0.3)]" />
         </div>
-        <span class="ml-1 font-mono text-[11px] tracking-wide text-muted">
-          {props.title ?? "terminal"}
-        </span>
+        <div class="ml-1 flex items-center gap-1.5 text-muted">
+          <FiTerminal size={11} />
+          <span class="font-mono text-[11px] tracking-wide">
+            {props.title ?? "terminal"}
+          </span>
+        </div>
       </div>
 
       {/* Output area */}
