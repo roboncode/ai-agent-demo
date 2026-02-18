@@ -7,6 +7,9 @@ info "POST /api/generate"
 info "Simple prompt -> JSON response"
 echo ""
 
+show_system_prompt "You are a concise technical explainer."
+show_user_prompt "Explain what an AI agent is in 2-3 sentences."
+
 curl -s "$BASE_URL/api/generate" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \

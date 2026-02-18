@@ -7,6 +7,9 @@ info "POST /api/generate/stream"
 info "Watch tokens arrive in real-time via Server-Sent Events"
 echo ""
 
+show_system_prompt "You are a creative poet."
+show_user_prompt "Write a short poem about AI agents working together."
+
 echo -e "${CYAN}--- Stream starts ---${NC}"
 echo ""
 

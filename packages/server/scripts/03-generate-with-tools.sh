@@ -7,7 +7,9 @@ info "POST /api/generate"
 info "LLM decides when to call tools, results come back in response"
 echo ""
 
-echo -e "${YELLOW}Asking about weather with the getWeather tool available...${NC}"
+show_system_prompt "(default - none specified)"
+show_user_prompt "What is the weather like in San Francisco right now?"
+echo -e "${DIM}Tools: [getWeather]  maxSteps: 3${NC}"
 echo ""
 
 curl -s "$BASE_URL/api/generate" \

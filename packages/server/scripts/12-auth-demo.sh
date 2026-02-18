@@ -6,6 +6,8 @@ header "Auth Demo"
 info "Shows that API routes require X-API-Key header"
 echo ""
 
+show_user_prompt "hello"
+
 # Without API key
 echo -e "${RED}Without API key:${NC}"
 echo -e "${DIM}curl $BASE_URL/api/generate (no X-API-Key header)${NC}"

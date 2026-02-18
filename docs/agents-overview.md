@@ -32,3 +32,6 @@ Knowledge Base
 Memory
 Context
 Message formats
+Sandboxes
+Guardrails
+Structure (JSON, TOON, YAML, XML, CSV)

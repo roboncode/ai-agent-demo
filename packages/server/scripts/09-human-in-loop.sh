@@ -8,10 +8,22 @@ info "  Phase 1: POST /api/agents/human-in-loop  (AI proposes action)"
 info "  Phase 2: POST /api/agents/human-in-loop/approve  (Human approves/rejects)"
 echo ""
 
+show_system_prompt "You are an agent that proposes actions for human approval before executing them.
+
+You MUST ALWAYS use one of the available tools to propose an action. NEVER describe the action in text only.
+
+Available tools:
+- sendEmail: Propose sending an email
+- deleteData: Propose deleting data
+- publishContent: Propose publishing content
+
+You MUST call the appropriate tool with all required parameters. The action will be queued for human review."
+
 # Phase 1: Propose an action
 echo -e "${YELLOW}Phase 1: Proposing an action...${NC}"
-echo -e "${DIM}Asking the AI to send an email (it will propose, not execute)${NC}"
 echo ""
+
+show_user_prompt "Send an email to john@example.com letting him know the project is ready for review."
 
 RESPONSE=$(curl -s "$BASE_URL/api/agents/human-in-loop" \
   -H "Content-Type: application/json" \
