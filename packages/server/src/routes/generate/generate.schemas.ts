@@ -33,6 +33,6 @@ export const generateResponseSchema = z.object({
     outputTokens: z.number().openapi({ example: 150 }),
     totalTokens: z.number().openapi({ example: 175 }),
   }),
-  toolResults: z.array(z.object({}).passthrough()).optional(),
+  toolResults: z.array(z.any()).optional(),
   finishReason: z.string(),
 });

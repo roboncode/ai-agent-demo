@@ -26,7 +26,7 @@ router.openapi(
     responses: {
       200: {
         description: "Weather data",
-        content: { "application/json": { schema: z.object({}).passthrough() } },
+        content: { "application/json": { schema: z.any() } },
       },
     },
   }),
@@ -50,7 +50,7 @@ router.openapi(
     responses: {
       200: {
         description: "Top stories list",
-        content: { "application/json": { schema: z.object({}).passthrough() } },
+        content: { "application/json": { schema: z.any() } },
       },
     },
   }),
@@ -70,7 +70,11 @@ router.openapi(
     responses: {
       200: {
         description: "Story details",
-        content: { "application/json": { schema: z.object({}).passthrough() } },
+        content: { "application/json": { schema: z.any() } },
+      },
+      400: {
+        description: "Invalid story ID",
+        content: { "application/json": { schema: z.object({ error: z.string() }) } },
       },
     },
   }),
@@ -94,7 +98,7 @@ router.openapi(
     responses: {
       200: {
         description: "Movie search results",
-        content: { "application/json": { schema: z.object({}).passthrough() } },
+        content: { "application/json": { schema: z.any() } },
       },
     },
   }),
@@ -114,7 +118,11 @@ router.openapi(
     responses: {
       200: {
         description: "Movie details",
-        content: { "application/json": { schema: z.object({}).passthrough() } },
+        content: { "application/json": { schema: z.any() } },
+      },
+      400: {
+        description: "Invalid movie ID",
+        content: { "application/json": { schema: z.object({ error: z.string() }) } },
       },
     },
   }),

@@ -8,7 +8,7 @@ const router = createRouter();
 const agentResponse = {
   200: {
     description: "Agent response (JSON)",
-    content: { "application/json": { schema: z.object({}).passthrough() } },
+    content: { "application/json": { schema: z.any() } },
   },
 };
 

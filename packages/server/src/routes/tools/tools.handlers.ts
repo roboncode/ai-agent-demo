@@ -12,13 +12,13 @@ import {
 export async function handleWeather(c: Context) {
   const { location } = await c.req.json();
   const result = await getWeatherDirect(location);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 export async function handleHackernews(c: Context) {
   const { limit } = await c.req.json();
   const result = await getTopStoriesDirect(limit ?? 10);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 export async function handleHackernewsStory(c: Context) {
@@ -27,13 +27,13 @@ export async function handleHackernewsStory(c: Context) {
     return c.json({ error: "Invalid story ID" }, 400);
   }
   const result = await getStoryDetailDirect(storyId);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 export async function handleMovieSearch(c: Context) {
   const { query } = await c.req.json();
   const result = await searchMoviesDirect(query);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 export async function handleMovieDetail(c: Context) {
@@ -42,5 +42,5 @@ export async function handleMovieDetail(c: Context) {
     return c.json({ error: "Invalid movie ID" }, 400);
   }
   const result = await getMovieDetailDirect(movieId);
-  return c.json(result);
+  return c.json(result, 200);
 }

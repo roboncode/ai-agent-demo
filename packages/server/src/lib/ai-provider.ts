@@ -1,3 +1,4 @@
+import type { LanguageModel } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { env } from "../env.js";
 
@@ -5,7 +6,7 @@ const openrouter = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
-export const getModel = (id?: string) => openrouter(id ?? env.DEFAULT_MODEL);
+export const getModel = (id?: string): LanguageModel => openrouter(id ?? env.DEFAULT_MODEL);
 
 export interface UsageInfo {
   inputTokens: number;

@@ -26,10 +26,10 @@ export function configureOpenAPI(app: OpenAPIHono<AppBindings>) {
   app.get(
     "/reference",
     apiReference({
-      spec: { url: "/doc" },
+      url: "/doc",
       theme: "kepler",
       layout: "modern",
-      defaultHttpClient: { targetKey: "javascript", clientKey: "fetch" },
+      defaultHttpClient: { targetKey: "js", clientKey: "fetch" },
       pageTitle: "AI Agent Demo - API Reference",
     })
   );

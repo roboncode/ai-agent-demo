@@ -91,13 +91,13 @@ export async function handleCodingAgent(c: Context) {
 export async function handleHumanInLoopAgent(c: Context) {
   const { message, model } = await c.req.json();
   const result = await runHumanInLoopAgent(message, model);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 export async function handleHumanInLoopApprove(c: Context) {
   const { id, approved } = await c.req.json();
   const result = await approveAction(id, approved);
-  return c.json(result);
+  return c.json(result, 200);
 }
 
 // --- Structured output agent (JSON, not SSE) ---
@@ -105,7 +105,7 @@ export async function handleHumanInLoopApprove(c: Context) {
 export async function handleRecipeAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   const result = await runRecipeAgent(message, model);
-  return c.json({ ...result, conversationId: conversationId(cid) });
+  return c.json({ ...result, conversationId: conversationId(cid) }, 200);
 }
 
 // --- Guardrails agent (JSON, not SSE) ---
@@ -113,7 +113,7 @@ export async function handleRecipeAgent(c: Context) {
 export async function handleGuardrailsAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   const result = await runGuardrailsAgent(message, model);
-  return c.json({ ...result, conversationId: conversationId(cid) });
+  return c.json({ ...result, conversationId: conversationId(cid) }, 200);
 }
 
 // --- Task agent (custom hybrid streaming) ---

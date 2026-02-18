@@ -38,7 +38,7 @@ export async function handleGenerate(c: Context) {
     usage: extractUsage(result, startTime),
     toolResults: toolResults.length > 0 ? toolResults : undefined,
     finishReason: result.finishReason,
-  });
+  }, 200);
 }
 
 export async function handleGenerateStream(c: Context) {
