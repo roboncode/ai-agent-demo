@@ -83,6 +83,11 @@ const executeCodeTool = tool({
   },
 });
 
+export const CODING_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: { executeCode: executeCodeTool },
+};
+
 export async function runCodingAgent(message: string, model?: string) {
   const startTime = performance.now();
   const result = await generateText({

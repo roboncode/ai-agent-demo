@@ -23,12 +23,9 @@ Create one task per distinct information need. Be specific in your task queries.
 
 show_user_prompt "I need three things: the weather in Paris, the top Hacker News story, and a good sci-fi movie recommendation."
 
-curl -s "$BASE_URL/api/agents/task" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/task" '{
     "message": "I need three things: the weather in Paris, the top Hacker News story, and a good sci-fi movie recommendation."
-  }' | jq .
+  }'
 
 echo ""
 success "Done!"

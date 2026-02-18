@@ -45,3 +45,56 @@ show_user_prompt() {
   echo -e "${CYAN}$1${NC}"
   echo ""
 }
+
+# Stream SSE events from an agent endpoint
+stream_sse() {
+  local url="$1"
+  local data="$2"
+  local current_event=""
+
+  echo -e "${CYAN}--- Stream starts ---${NC}"
+  echo ""
+
+  curl -sN "$url" \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: $API_KEY" \
+    -d "$data" | while IFS= read -r line; do
+    if [[ "$line" == event:* ]]; then
+      current_event="${line#event: }"
+    elif [[ "$line" == data:* ]]; then
+      local json="${line#data: }"
+      case "$current_event" in
+        text-delta)
+          printf "%s" "$(echo "$json" | jq -r '.text // empty')"
+          ;;
+        tool-call)
+          local tool_name
+          tool_name=$(echo "$json" | jq -r '.toolName')
+          local args_summary
+          args_summary=$(echo "$json" | jq -c '.args // {}')
+          echo ""
+          echo -e "${YELLOW}  > Tool Call: ${BOLD}${tool_name}${NC}${DIM} ${args_summary}${NC}"
+          ;;
+        tool-result)
+          local result_tool
+          result_tool=$(echo "$json" | jq -r '.toolName')
+          # Show a compact preview of the result (first 120 chars)
+          local result_preview
+          result_preview=$(echo "$json" | jq -c '.result' | cut -c1-120)
+          echo -e "${GREEN}  < Tool Result: ${BOLD}${result_tool}${NC}${DIM} ${result_preview}...${NC}"
+          ;;
+        status)
+          echo -e "${YELLOW}  [$(echo "$json" | jq -r '.phase // empty')]${NC}"
+          ;;
+        done)
+          echo ""
+          echo ""
+          echo -e "${DIM}$(echo "$json" | jq '{toolsUsed, usage}')${NC}"
+          ;;
+      esac
+    fi
+  done
+
+  echo ""
+  echo -e "${CYAN}--- Stream ends ---${NC}"
+}

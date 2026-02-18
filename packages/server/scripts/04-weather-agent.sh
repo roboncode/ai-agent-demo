@@ -19,12 +19,9 @@ Always use the tool to get real data rather than guessing."
 
 show_user_prompt "What is the weather like in Tokyo and New York right now? Compare them."
 
-curl -s "$BASE_URL/api/agents/weather" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/weather" '{
     "message": "What is the weather like in Tokyo and New York right now? Compare them."
-  }' | jq .
+  }'
 
 echo ""
 success "Done!"

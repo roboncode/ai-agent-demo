@@ -26,12 +26,9 @@ echo ""
 
 show_user_prompt "Remember that my name is Alex and my favorite programming language is TypeScript."
 
-curl -s "$BASE_URL/api/agents/memory" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/memory" '{
     "message": "Remember that my name is Alex and my favorite programming language is TypeScript."
-  }' | jq .
+  }'
 
 echo ""
 echo -e "${DIM}Waiting 2 seconds...${NC}"
@@ -43,12 +40,9 @@ echo ""
 
 show_user_prompt "What do you remember about me? What is my name and what language do I like?"
 
-curl -s "$BASE_URL/api/agents/memory" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/memory" '{
     "message": "What do you remember about me? What is my name and what language do I like?"
-  }' | jq .
+  }'
 
 echo ""
 

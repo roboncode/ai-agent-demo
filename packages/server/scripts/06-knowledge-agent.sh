@@ -19,12 +19,9 @@ Present information in an engaging, film-critic style."
 
 show_user_prompt "Who are the top three main characters in the TV show Lost and which actors played them?"
 
-curl -s "$BASE_URL/api/agents/knowledge" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/knowledge" '{
     "message": "Who are the top three main characters in the TV show Lost and which actors played them?"
-  }' | jq .
+  }'
 
 echo ""
 success "Done!"

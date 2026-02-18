@@ -7,8 +7,15 @@ const router = createRouter();
 
 const agentResponse = {
   200: {
-    description: "Agent response",
+    description: "Agent response (JSON)",
     content: { "application/json": { schema: z.object({}).passthrough() } },
+  },
+};
+
+const sseResponse = {
+  200: {
+    description: "SSE stream of agent events (text-delta, tool-call, tool-result, done)",
+    content: { "text/event-stream": { schema: z.any() } },
   },
 };
 
@@ -25,7 +32,7 @@ router.openapi(
     summary: "Weather specialist agent",
     description: "AI agent specialized in weather queries, using wttr.in data",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleWeatherAgent
 );
@@ -39,7 +46,7 @@ router.openapi(
     summary: "Hacker News analyst agent",
     description: "AI agent specialized in Hacker News trending stories and tech news",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleHackernewsAgent
 );
@@ -53,7 +60,7 @@ router.openapi(
     summary: "Movie recommender agent",
     description: "AI agent specialized in movie search, details, and recommendations via TMDB",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleKnowledgeAgent
 );
@@ -67,7 +74,7 @@ router.openapi(
     summary: "Supervisor routing agent",
     description: "Routes queries to appropriate specialist agents (weather, hackernews, knowledge)",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleSupervisorAgent
 );
@@ -81,7 +88,7 @@ router.openapi(
     summary: "Memory-enabled agent",
     description: "Agent with persistent memory - can save and recall information across conversations",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleMemoryAgent
 );
@@ -126,9 +133,9 @@ router.openapi(
     tags: ["Agents"],
     summary: "Parallel task delegation agent",
     description:
-      "Breaks complex queries into parallel sub-tasks, delegates to specialist agents, and synthesizes results",
+      "Breaks complex queries into parallel sub-tasks, delegates to specialist agents, and synthesizes results (streams status + synthesis)",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleTaskAgent
 );
@@ -142,7 +149,7 @@ router.openapi(
     summary: "Code generation and execution agent",
     description: "Agent that writes and executes JavaScript code in a sandboxed environment",
     request: { body: agentBody },
-    responses: agentResponse,
+    responses: sseResponse,
   }),
   handlers.handleCodingAgent
 );

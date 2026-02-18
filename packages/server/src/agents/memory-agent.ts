@@ -20,6 +20,8 @@ When the user asks about something they previously told you:
 
 Be proactive about saving relevant preferences, facts, and context the user shares.`;
 
+// Tools defined below, config exported after tool definitions
+
 const saveMemoryTool = tool({
   description: "Save a piece of information to persistent memory",
   inputSchema: z.object({
@@ -57,6 +59,15 @@ const listMemoriesTool = tool({
     };
   },
 });
+
+export const MEMORY_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: {
+    saveMemory: saveMemoryTool,
+    recallMemory: recallMemoryTool,
+    listMemories: listMemoriesTool,
+  },
+};
 
 export async function runMemoryAgent(message: string, model?: string) {
   const startTime = performance.now();

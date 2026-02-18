@@ -12,6 +12,14 @@ When asked about movies:
 
 Present information in an engaging, film-critic style. Use ratings and release dates to contextualize recommendations.`;
 
+export const KNOWLEDGE_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: {
+    searchMovies: movieSearchTool,
+    getMovieDetail: movieDetailTool,
+  },
+};
+
 export async function runKnowledgeAgent(message: string, model?: string) {
   const startTime = performance.now();
   const result = await generateText({

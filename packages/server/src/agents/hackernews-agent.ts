@@ -15,6 +15,14 @@ When asked about Hacker News:
 
 Present information in an engaging, tech-news style.`;
 
+export const HACKERNEWS_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: {
+    getTopStories: hackernewsTopStoriesTool,
+    getStoryDetail: hackernewsStoryDetailTool,
+  },
+};
+
 export async function runHackernewsAgent(message: string, model?: string) {
   const startTime = performance.now();
   const result = await generateText({

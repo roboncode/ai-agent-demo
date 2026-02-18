@@ -12,6 +12,11 @@ When asked about weather:
 
 Always use the tool to get real data rather than guessing.`;
 
+export const WEATHER_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: { getWeather: weatherTool },
+};
+
 export async function runWeatherAgent(message: string, model?: string) {
   const startTime = performance.now();
   const result = await generateText({

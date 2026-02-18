@@ -24,12 +24,9 @@ Always use the routeToAgent tool - never answer domain questions directly."
 
 show_user_prompt "What is the weather in London and what are the top stories on Hacker News today?"
 
-curl -s "$BASE_URL/api/agents/supervisor" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/supervisor" '{
     "message": "What is the weather in London and what are the top stories on Hacker News today?"
-  }' | jq .
+  }'
 
 echo ""
 success "Done!"

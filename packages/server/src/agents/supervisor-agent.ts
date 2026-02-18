@@ -41,6 +41,11 @@ const routeToAgentTool = tool({
   },
 });
 
+export const SUPERVISOR_AGENT_CONFIG = {
+  system: SYSTEM_PROMPT,
+  tools: { routeToAgent: routeToAgentTool },
+};
+
 export async function runSupervisorAgent(message: string, model?: string) {
   const startTime = performance.now();
   const result = await generateText({

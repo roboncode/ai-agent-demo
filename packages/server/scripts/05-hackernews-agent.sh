@@ -19,12 +19,9 @@ Present information in an engaging, tech-news style."
 
 show_user_prompt "What are the top 5 stories on Hacker News right now? Give me a brief summary of each."
 
-curl -s "$BASE_URL/api/agents/hackernews" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: $API_KEY" \
-  -d '{
+stream_sse "$BASE_URL/api/agents/hackernews" '{
     "message": "What are the top 5 stories on Hacker News right now? Give me a brief summary of each."
-  }' | jq .
+  }'
 
 echo ""
 success "Done!"

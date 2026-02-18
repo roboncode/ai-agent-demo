@@ -15,7 +15,9 @@ Models (when to use what?)
 Tools
 Observability
 Cost
+Thinking
 Human in the loop
+generate vs streaming SSE
 Workflows
 MCP Client / Server
 Supervisor Agent

@@ -27,4 +27,4 @@ app.route("/api/memory", memoryRoutes);
 console.log(`Server running on http://localhost:${env.PORT}`);
 console.log(`API docs: http://localhost:${env.PORT}/reference`);
 
-export default { port: env.PORT, fetch: app.fetch };
+export default { port: env.PORT, fetch: app.fetch, idleTimeout: 120 };
