@@ -1,0 +1,10 @@
+{
+  "name": "@ai-agent-demo/server",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"Add dev script\"",
+    "build": "echo \"Add build script\"",
+    "start": "echo \"Add start script\""
+  }
+}
