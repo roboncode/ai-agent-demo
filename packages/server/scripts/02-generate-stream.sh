@@ -32,12 +32,22 @@ curl -sN "$BASE_URL/api/generate/stream" \
       echo ""
       echo ""
       echo -e "${DIM}Finish reason: $reason${NC}"
-      # Show usage if available
+      # Show usage, cost, and duration if available
       input_tokens=$(echo "$data" | jq -r '.usage.inputTokens // empty' 2>/dev/null)
       output_tokens=$(echo "$data" | jq -r '.usage.outputTokens // empty' 2>/dev/null)
       total_tokens=$(echo "$data" | jq -r '.usage.totalTokens // empty' 2>/dev/null)
+      cost=$(echo "$data" | jq -r '.usage.cost // empty' 2>/dev/null)
+      duration=$(echo "$data" | jq -r '.usage.durationMs // empty' 2>/dev/null)
       if [[ -n "$total_tokens" ]]; then
-        echo -e "${DIM}Usage: ${input_tokens} input + ${output_tokens} output = ${total_tokens} total tokens${NC}"
+        echo -e "${DIM}Tokens:   ${input_tokens} input + ${output_tokens} output = ${total_tokens} total${NC}"
+      fi
+      if [[ -n "$cost" && "$cost" != "null" ]]; then
+        cost_fmt=$(printf '$%.6f' "$cost")
+        echo -e "${DIM}Cost:     ${cost_fmt}${NC}"
+      fi
+      if [[ -n "$duration" ]]; then
+        duration_s=$(echo "scale=2; $duration / 1000" | bc)
+        echo -e "${DIM}Duration: ${duration_s}s${NC}"
       fi
     fi
   fi
