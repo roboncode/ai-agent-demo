@@ -1,5 +1,5 @@
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 import { weatherTool } from "../tools/weather.js";
 
 const SYSTEM_PROMPT = `You are a weather specialist agent. Your job is to provide accurate, helpful weather information.
@@ -13,6 +13,7 @@ When asked about weather:
 Always use the tool to get real data rather than guessing.`;
 
 export async function runWeatherAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -28,5 +29,6 @@ export async function runWeatherAgent(message: string, model?: string) {
   return {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
+    usage: extractUsage(result, startTime),
   };
 }

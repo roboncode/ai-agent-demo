@@ -1,6 +1,6 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 import {
   saveMemory,
   recallMemory,
@@ -59,6 +59,7 @@ const listMemoriesTool = tool({
 });
 
 export async function runMemoryAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -78,5 +79,6 @@ export async function runMemoryAgent(message: string, model?: string) {
   return {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
+    usage: extractUsage(result, startTime),
   };
 }

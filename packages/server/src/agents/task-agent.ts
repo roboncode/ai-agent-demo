@@ -1,6 +1,6 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage, mergeUsage, type UsageInfo } from "../lib/ai-provider.js";
 import { runWeatherAgent } from "./weather-agent.js";
 import { runHackernewsAgent } from "./hackernews-agent.js";
 import { runKnowledgeAgent } from "./knowledge-agent.js";
@@ -22,7 +22,7 @@ Create one task per distinct information need. Be specific in your task queries.
 interface TaskResult {
   agent: string;
   query: string;
-  result: { response: string; toolsUsed: string[] };
+  result: { response: string; toolsUsed: string[]; usage?: UsageInfo };
 }
 
 const createTaskTool = tool({
@@ -44,7 +44,7 @@ async function executeTask(
   agent: string,
   query: string
 ): Promise<TaskResult> {
-  let result: { response: string; toolsUsed: string[] };
+  let result: { response: string; toolsUsed: string[]; usage?: UsageInfo };
 
   switch (agent) {
     case "weather":
@@ -64,7 +64,10 @@ async function executeTask(
 }
 
 export async function runTaskAgent(message: string, model?: string) {
+  const overallStart = performance.now();
+
   // Phase 1: Let AI plan the tasks
+  const planStart = performance.now();
   const planResult = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -72,8 +75,9 @@ export async function runTaskAgent(message: string, model?: string) {
     tools: { createTask: createTaskTool },
     stopWhen: stepCountIs(5),
   });
+  const planUsage = extractUsage(planResult, planStart);
 
-  // Collect all task proposals - extract from tool results since execute returns { agent, query, status }
+  // Collect all task proposals
   const tasks: { agent: string; query: string }[] = [];
   for (const step of planResult.steps) {
     for (const tc of step.toolCalls) {
@@ -91,6 +95,10 @@ export async function runTaskAgent(message: string, model?: string) {
       response: planResult.text || "I couldn't identify any sub-tasks to execute.",
       tasks: [],
       toolsUsed: [],
+      usage: {
+        ...planUsage,
+        durationMs: Math.round(performance.now() - overallStart),
+      },
     };
   }
 
@@ -106,12 +114,23 @@ ${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.res
 
 Please synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
+  const synthesisStart = performance.now();
   const synthesisResult = await generateText({
     model: getModel(model),
     prompt: synthesisPrompt,
   });
+  const synthesisUsage = extractUsage(synthesisResult, synthesisStart);
 
   const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+
+  // Aggregate all usage: planning + sub-agents + synthesis
+  const subAgentUsages = results
+    .map((r) => r.result.usage)
+    .filter((u): u is UsageInfo => !!u);
+
+  const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthesisUsage);
+  // Override duration with wall-clock time for the entire operation
+  totalUsage.durationMs = Math.round(performance.now() - overallStart);
 
   return {
     response: synthesisResult.text,
@@ -121,5 +140,6 @@ Please synthesize these results into a coherent, comprehensive response for the 
       summary: r.result.response.slice(0, 200),
     })),
     toolsUsed: [...new Set(allToolsUsed)],
+    usage: totalUsage,
   };
 }

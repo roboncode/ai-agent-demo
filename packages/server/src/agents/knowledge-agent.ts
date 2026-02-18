@@ -1,5 +1,5 @@
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 import { movieSearchTool, movieDetailTool } from "../tools/movies.js";
 
 const SYSTEM_PROMPT = `You are a movie knowledge and recommendation agent. Your job is to help users discover movies, get details, and receive personalized recommendations.
@@ -13,6 +13,7 @@ When asked about movies:
 Present information in an engaging, film-critic style. Use ratings and release dates to contextualize recommendations.`;
 
 export async function runKnowledgeAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -31,5 +32,6 @@ export async function runKnowledgeAgent(message: string, model?: string) {
   return {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
+    usage: extractUsage(result, startTime),
   };
 }

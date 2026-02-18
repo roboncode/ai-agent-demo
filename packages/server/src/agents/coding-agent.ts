@@ -1,7 +1,7 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import vm from "node:vm";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 
 const SYSTEM_PROMPT = `You are a coding agent that writes and executes JavaScript code to solve problems.
 
@@ -84,6 +84,7 @@ const executeCodeTool = tool({
 });
 
 export async function runCodingAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -104,5 +105,6 @@ export async function runCodingAgent(message: string, model?: string) {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
     codeExecutions,
+    usage: extractUsage(result, startTime),
   };
 }

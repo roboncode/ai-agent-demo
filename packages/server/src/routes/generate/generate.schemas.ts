@@ -29,9 +29,9 @@ export const generateResponseSchema = z.object({
   text: z.string(),
   model: z.string(),
   usage: z.object({
-    promptTokens: z.number(),
-    completionTokens: z.number(),
-    totalTokens: z.number(),
+    inputTokens: z.number().openapi({ example: 25 }),
+    outputTokens: z.number().openapi({ example: 150 }),
+    totalTokens: z.number().openapi({ example: 175 }),
   }),
   toolResults: z.array(z.object({}).passthrough()).optional(),
   finishReason: z.string(),

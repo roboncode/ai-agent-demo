@@ -1,6 +1,6 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 import { runWeatherAgent } from "./weather-agent.js";
 import { runHackernewsAgent } from "./hackernews-agent.js";
 import { runKnowledgeAgent } from "./knowledge-agent.js";
@@ -42,6 +42,7 @@ const routeToAgentTool = tool({
 });
 
 export async function runSupervisorAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -64,5 +65,6 @@ export async function runSupervisorAgent(message: string, model?: string) {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
     agentsUsed: [...new Set(agentsUsed)],
+    usage: extractUsage(result, startTime),
   };
 }

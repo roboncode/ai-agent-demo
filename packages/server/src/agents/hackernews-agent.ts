@@ -1,5 +1,5 @@
 import { generateText, stepCountIs } from "ai";
-import { getModel } from "../lib/ai-provider.js";
+import { getModel, extractUsage } from "../lib/ai-provider.js";
 import {
   hackernewsTopStoriesTool,
   hackernewsStoryDetailTool,
@@ -16,6 +16,7 @@ When asked about Hacker News:
 Present information in an engaging, tech-news style.`;
 
 export async function runHackernewsAgent(message: string, model?: string) {
+  const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: SYSTEM_PROMPT,
@@ -34,5 +35,6 @@ export async function runHackernewsAgent(message: string, model?: string) {
   return {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
+    usage: extractUsage(result, startTime),
   };
 }
