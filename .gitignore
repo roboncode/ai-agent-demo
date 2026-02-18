@@ -1,2 +1,6 @@
 .claude/.DS_Store
 .env
+node_modules/
+dist/
+packages/server/data/*
+!packages/server/data/.gitkeep
