@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import vm from "node:vm";
 import { getModel } from "../lib/ai-provider.js";
@@ -89,7 +89,7 @@ export async function runCodingAgent(message: string, model?: string) {
     system: SYSTEM_PROMPT,
     prompt: message,
     tools: { executeCode: executeCodeTool },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps

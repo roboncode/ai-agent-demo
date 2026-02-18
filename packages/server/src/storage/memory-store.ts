@@ -13,6 +13,9 @@ export interface MemoryEntry {
 
 type MemoryData = Record<string, MemoryEntry>;
 
+// Simple write lock to prevent concurrent write corruption
+let writeLock: Promise<void> = Promise.resolve();
+
 async function ensureFile() {
   const dir = dirname(MEMORY_FILE);
   if (!existsSync(dir)) {
@@ -26,12 +29,22 @@ async function ensureFile() {
 async function readMemories(): Promise<MemoryData> {
   await ensureFile();
   const raw = await readFile(MEMORY_FILE, "utf-8");
-  return JSON.parse(raw);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Reset if corrupted
+    await writeFile(MEMORY_FILE, JSON.stringify({}, null, 2));
+    return {};
+  }
 }
 
 async function writeMemories(data: MemoryData): Promise<void> {
   await ensureFile();
-  await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2));
+  // Serialize writes to prevent concurrent corruption
+  writeLock = writeLock.then(async () => {
+    await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2));
+  });
+  await writeLock;
 }
 
 export async function saveMemory(key: string, value: string): Promise<MemoryEntry> {

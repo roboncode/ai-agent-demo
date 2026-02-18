@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel } from "../lib/ai-provider.js";
 import { weatherTool } from "../tools/weather.js";
 
@@ -18,7 +18,7 @@ export async function runWeatherAgent(message: string, model?: string) {
     system: SYSTEM_PROMPT,
     prompt: message,
     tools: { getWeather: weatherTool },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps

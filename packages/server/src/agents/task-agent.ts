@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { getModel } from "../lib/ai-provider.js";
 import { runWeatherAgent } from "./weather-agent.js";
@@ -70,14 +70,21 @@ export async function runTaskAgent(message: string, model?: string) {
     system: SYSTEM_PROMPT,
     prompt: message,
     tools: { createTask: createTaskTool },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
-  // Collect all task proposals
-  const tasks = planResult.steps
-    .flatMap((step) => step.toolCalls)
-    .filter((tc) => tc.toolName === "createTask")
-    .map((tc) => tc.args as { agent: string; query: string });
+  // Collect all task proposals - extract from tool results since execute returns { agent, query, status }
+  const tasks: { agent: string; query: string }[] = [];
+  for (const step of planResult.steps) {
+    for (const tc of step.toolCalls) {
+      if (tc.toolName === "createTask" && (tc as any).input) {
+        const input = (tc as any).input as { agent?: string; query?: string };
+        if (input.agent && input.query) {
+          tasks.push({ agent: input.agent, query: input.query });
+        }
+      }
+    }
+  }
 
   if (tasks.length === 0) {
     return {

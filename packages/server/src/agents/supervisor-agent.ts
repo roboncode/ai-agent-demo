@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { getModel } from "../lib/ai-provider.js";
 import { runWeatherAgent } from "./weather-agent.js";
@@ -47,7 +47,7 @@ export async function runSupervisorAgent(message: string, model?: string) {
     system: SYSTEM_PROMPT,
     prompt: message,
     tools: { routeToAgent: routeToAgentTool },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps
@@ -56,8 +56,8 @@ export async function runSupervisorAgent(message: string, model?: string) {
 
   const agentsUsed = result.steps
     .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.args)
-    .filter((args): args is { agent: string; query: string } => !!args?.agent)
+    .map((tc) => (tc as any).input)
+    .filter((input): input is { agent: string; query: string } => !!input?.agent)
     .map((args) => args.agent);
 
   return {

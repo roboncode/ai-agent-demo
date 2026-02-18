@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { generateText, streamText } from "ai";
+import { generateText, streamText, stepCountIs } from "ai";
 import { getModel } from "../../lib/ai-provider.js";
 import { allTools, type ToolName } from "../../tools/index.js";
 
@@ -24,7 +24,7 @@ export async function handleGenerate(c: Context) {
     system: systemPrompt,
     prompt,
     tools: selectedTools,
-    maxSteps: selectedTools ? (maxSteps ?? 5) : undefined,
+    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   const toolResults = result.steps
@@ -57,7 +57,7 @@ export async function handleGenerateStream(c: Context) {
     system: systemPrompt,
     prompt,
     tools: selectedTools,
-    maxSteps: selectedTools ? (maxSteps ?? 5) : undefined,
+    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   return streamSSE(c, async (stream) => {

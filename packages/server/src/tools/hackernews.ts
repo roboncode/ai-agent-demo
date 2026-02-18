@@ -85,9 +85,9 @@ export const hackernewsStoryDetailTool = tool({
 });
 
 export async function getTopStoriesDirect(limit = 10) {
-  return hackernewsTopStoriesTool.execute!({ limit }, { toolCallId: "direct", messages: [], abortSignal: undefined as any });
+  return hackernewsTopStoriesTool.execute!({ limit }, { toolCallId: "direct" } as any);
 }
 
 export async function getStoryDetailDirect(storyId: number) {
-  return hackernewsStoryDetailTool.execute!({ storyId }, { toolCallId: "direct", messages: [], abortSignal: undefined as any });
+  return hackernewsStoryDetailTool.execute!({ storyId }, { toolCallId: "direct" } as any);
 }

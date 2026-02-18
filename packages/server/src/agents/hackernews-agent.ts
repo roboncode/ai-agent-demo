@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel } from "../lib/ai-provider.js";
 import {
   hackernewsTopStoriesTool,
@@ -24,7 +24,7 @@ export async function runHackernewsAgent(message: string, model?: string) {
       getTopStories: hackernewsTopStoriesTool,
       getStoryDetail: hackernewsStoryDetailTool,
     },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps

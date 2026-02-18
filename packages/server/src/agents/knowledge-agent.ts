@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, stepCountIs } from "ai";
 import { getModel } from "../lib/ai-provider.js";
 import { movieSearchTool, movieDetailTool } from "../tools/movies.js";
 
@@ -21,7 +21,7 @@ export async function runKnowledgeAgent(message: string, model?: string) {
       searchMovies: movieSearchTool,
       getMovieDetail: movieDetailTool,
     },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps

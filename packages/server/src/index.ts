@@ -1,4 +1,3 @@
-import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { configureOpenAPI } from "./lib/configure-openapi.js";
 import { authMiddleware } from "./middleware/auth.js";
@@ -25,9 +24,7 @@ app.route("/api/tools", toolsRoutes);
 app.route("/api/agents", agentsRoutes);
 app.route("/api/memory", memoryRoutes);
 
-serve({ fetch: app.fetch, port: env.PORT }, (info) => {
-  console.log(`Server running on http://localhost:${info.port}`);
-  console.log(`API docs: http://localhost:${info.port}/reference`);
-});
+console.log(`Server running on http://localhost:${env.PORT}`);
+console.log(`API docs: http://localhost:${env.PORT}/reference`);
 
-export default app;
+export default { port: env.PORT, fetch: app.fetch };

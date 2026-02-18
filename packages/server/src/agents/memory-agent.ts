@@ -1,4 +1,4 @@
-import { generateText, tool } from "ai";
+import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { getModel } from "../lib/ai-provider.js";
 import {
@@ -68,7 +68,7 @@ export async function runMemoryAgent(message: string, model?: string) {
       recallMemory: recallMemoryTool,
       listMemories: listMemoriesTool,
     },
-    maxSteps: 5,
+    stopWhen: stepCountIs(5),
   });
 
   const toolsUsed = result.steps

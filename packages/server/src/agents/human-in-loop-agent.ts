@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, tool } from "ai";
 import { z } from "zod";
 import { getModel } from "../lib/ai-provider.js";
 
@@ -17,38 +17,40 @@ const pendingActions = new Map<string, PendingAction>();
 
 const SYSTEM_PROMPT = `You are an agent that proposes actions for human approval before executing them.
 
-When the user asks you to do something, propose the action using one of these tools:
+You MUST ALWAYS use one of the available tools to propose an action. NEVER describe the action in text only.
+
+Available tools:
 - sendEmail: Propose sending an email
 - deleteData: Propose deleting data
 - publishContent: Propose publishing content
 
-IMPORTANT: You are proposing actions, not executing them. Describe clearly what you want to do so the human can approve or reject it.`;
+You MUST call the appropriate tool with all required parameters. The action will be queued for human review.`;
 
 // Schema-only tools (no execute function) - AI proposes but doesn't auto-execute
 const proposalTools = {
-  sendEmail: {
+  sendEmail: tool({
     description: "Propose sending an email to a recipient",
-    parameters: z.object({
+    inputSchema: z.object({
       to: z.string().describe("Email recipient"),
       subject: z.string().describe("Email subject"),
       body: z.string().describe("Email body content"),
     }),
-  },
-  deleteData: {
+  }),
+  deleteData: tool({
     description: "Propose deleting data from the system",
-    parameters: z.object({
+    inputSchema: z.object({
       resource: z.string().describe("The resource to delete"),
       reason: z.string().describe("Reason for deletion"),
     }),
-  },
-  publishContent: {
+  }),
+  publishContent: tool({
     description: "Propose publishing content",
-    parameters: z.object({
+    inputSchema: z.object({
       title: z.string().describe("Content title"),
       content: z.string().describe("Content body"),
       platform: z.string().describe("Target platform"),
     }),
-  },
+  }),
 };
 
 function generateId() {
@@ -61,6 +63,7 @@ export async function runHumanInLoopAgent(message: string, model?: string) {
     system: SYSTEM_PROMPT,
     prompt: message,
     tools: proposalTools,
+    toolChoice: "required",
   });
 
   // Intercept tool calls and store as pending actions
@@ -69,11 +72,12 @@ export async function runHumanInLoopAgent(message: string, model?: string) {
   for (const step of result.steps) {
     for (const toolCall of step.toolCalls) {
       const id = generateId();
+      const input = (toolCall as any).input as Record<string, unknown> | undefined;
       const action: PendingAction = {
         id,
         action: toolCall.toolName,
-        description: `${toolCall.toolName} with params: ${JSON.stringify(toolCall.args)}`,
-        parameters: toolCall.args as Record<string, unknown>,
+        description: `${toolCall.toolName} with params: ${JSON.stringify(input)}`,
+        parameters: input ?? {},
         status: "pending_approval",
         createdAt: new Date().toISOString(),
       };

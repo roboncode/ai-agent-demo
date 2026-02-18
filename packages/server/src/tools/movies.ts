@@ -89,9 +89,9 @@ export const movieDetailTool = tool({
 });
 
 export async function searchMoviesDirect(query: string) {
-  return movieSearchTool.execute!({ query }, { toolCallId: "direct", messages: [], abortSignal: undefined as any });
+  return movieSearchTool.execute!({ query }, { toolCallId: "direct" } as any);
 }
 
 export async function getMovieDetailDirect(movieId: number) {
-  return movieDetailTool.execute!({ movieId }, { toolCallId: "direct", messages: [], abortSignal: undefined as any });
+  return movieDetailTool.execute!({ movieId }, { toolCallId: "direct" } as any);
 }
