@@ -6,8 +6,10 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
-    "start": "npm run start --workspaces --if-present"
+    "dev": "bun run --filter '*' dev",
+    "dev:server": "bun run --filter '@ai-agent-demo/server' dev",
+    "dev:client": "bun run --filter 'client' dev",
+    "build": "bun run --filter '*' build",
+    "start": "bun run --filter '*' start"
   }
 }

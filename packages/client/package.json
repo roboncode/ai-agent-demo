@@ -1,10 +1,24 @@
 {
-  "name": "@ai-agent-demo/client",
-  "version": "1.0.0",
+  "name": "client",
   "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "dev": "echo \"Add dev script\"",
-    "build": "echo \"Add build script\"",
-    "start": "echo \"Add start script\""
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@t3-oss/env-core": "^0.13.10",
+    "solid-js": "^1.9.10",
+    "tailwindcss": "^4.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.0",
+    "@types/node": "^24.10.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10"
   }
 }
