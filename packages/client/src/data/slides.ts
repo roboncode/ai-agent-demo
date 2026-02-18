@@ -21,6 +21,7 @@ export const slides: SlideConfig[] = [
     demo: {
       type: "json",
       endpoint: "/api/generate",
+      systemPrompt: "You are a concise technical explainer.",
       body: {
         prompt: "Explain what an AI agent is in 2-3 sentences.",
         systemPrompt: "You are a concise technical explainer.",
@@ -71,6 +72,7 @@ data: {"usage": {"totalTokens": 142}}`,
     demo: {
       type: "sse",
       endpoint: "/api/generate/stream",
+      systemPrompt: "You are a creative poet.",
       body: {
         prompt: "Write a short poem about AI agents working together.",
         systemPrompt: "You are a creative poet.",
@@ -99,6 +101,7 @@ data: {"usage": {"totalTokens": 142}}`,
     demo: {
       type: "json",
       endpoint: "/api/generate",
+      systemPrompt: "(default — none specified)",
       body: {
         prompt: "What is the weather like in San Francisco right now?",
         tools: ["getWeather"],
@@ -109,16 +112,16 @@ data: {"usage": {"totalTokens": 142}}`,
 
   {
     id: 5,
-    title: "Tools: Giving Your Agent Hands",
+    title: "What Is a Tool?",
     category: "From LLM to Agent",
     section: "II. From LLM to Agent",
     bullets: [
-      "Tools are functions the agent can call — defined with a name, description, and input schema",
-      "The AI SDK validates tool inputs with Zod schemas before execution",
-      "Tools bridge the LLM's knowledge gap: real-time weather, databases, APIs, code execution",
-      "The agent loop: call tool → get result → incorporate into response → maybe call another tool",
+      "A tool is just a function — a name, a description, an input schema, and an execute function",
+      "No LLM involved here: we call the tool directly via REST and get structured data back",
+      "This is the building block — by itself it's just an API call with validated input/output",
+      "Next: we'll see what happens when you give this tool to an agent and let the LLM decide when to use it",
     ],
-    code: `// Tool definition pattern:
+    code: `// Tool definition (AI SDK + Zod):
 const getWeather = tool({
   description: "Get current weather for a location",
   parameters: z.object({
@@ -127,10 +130,35 @@ const getWeather = tool({
   execute: async ({ location }) => {
     return await fetchWeather(location);
   },
-});`,
+});
+
+// Direct call — no LLM needed:
+POST /api/tools/weather
+{ "location": "San Francisco" }`,
+    demo: {
+      type: "json",
+      endpoint: "/api/tools/weather",
+      body: {
+        location: "San Francisco",
+      },
+    },
+  },
+
+  {
+    id: 6,
+    title: "Tools: Giving Your Agent Hands",
+    category: "From LLM to Agent",
+    section: "II. From LLM to Agent",
+    bullets: [
+      "Now the tool belongs to an agent — the LLM decides when and how to call it",
+      "The AI SDK validates tool inputs with Zod schemas before execution",
+      "Tools bridge the LLM's knowledge gap: real-time weather, databases, APIs, code execution",
+      "The agent loop: call tool → get result → incorporate into response → maybe call another tool",
+    ],
     demo: {
       type: "sse",
       endpoint: "/api/agents/weather",
+      systemPrompt: "You are a weather specialist agent. Your job is to provide accurate, helpful weather information.\n\nWhen asked about weather:\n1. Use the getWeather tool to fetch current conditions\n2. Present the data in a clear, conversational format\n3. Include temperature, conditions, humidity, and wind info\n4. Offer practical advice based on conditions\n\nAlways use the tool to get real data rather than guessing.",
       body: {
         message:
           "What is the weather like in Tokyo and New York right now? Compare them.",
@@ -139,7 +167,7 @@ const getWeather = tool({
   },
 
   {
-    id: 6,
+    id: 7,
     title: "Knowledge Base: External Data Sources",
     category: "From LLM to Agent",
     section: "II. From LLM to Agent",
@@ -152,6 +180,7 @@ const getWeather = tool({
     demo: {
       type: "sse",
       endpoint: "/api/agents/knowledge",
+      systemPrompt: "You are a movie knowledge and recommendation agent. Your job is to help users discover movies, get details, and receive personalized recommendations.\n\nWhen asked about movies or TV:\n1. Use searchMovies to find content matching the user's interests\n2. Use getMovieDetail to provide in-depth information\n3. Make thoughtful recommendations based on genres, ratings, and user preferences\n4. Share interesting facts about movies, directors, and casts\n\nPresent information in an engaging, film-critic style.",
       body: {
         message:
           "Who are the top three main characters in the TV show Lost and which actors played them?",
@@ -161,7 +190,7 @@ const getWeather = tool({
 
   // ─── SECTION III: AGENT PATTERNS ──────────────────────────────────────
   {
-    id: 7,
+    id: 8,
     title: "Structured Output: JSON, Not Prose",
     category: "Agent Patterns",
     section: "III. Agent Patterns",
@@ -186,6 +215,7 @@ const RecipeSchema = z.object({
     demo: {
       type: "json",
       endpoint: "/api/agents/recipe",
+      systemPrompt: "You are a professional chef and recipe creator. When given a food topic or request, generate a complete, well-structured recipe.",
       body: {
         message: "A quick pasta dish with garlic and cherry tomatoes",
       },
@@ -193,7 +223,7 @@ const RecipeSchema = z.object({
   },
 
   {
-    id: 8,
+    id: 9,
     title: "Memory & Context",
     category: "Agent Patterns",
     section: "III. Agent Patterns",
@@ -206,6 +236,7 @@ const RecipeSchema = z.object({
     demo: {
       type: "sse",
       endpoint: "/api/agents/memory",
+      systemPrompt: "You are a memory-enabled agent. You can remember information across conversations by saving and recalling memories.\n\nWhen the user tells you to remember something:\n1. Use the saveMemory tool to store the information with a descriptive key\n2. Confirm what you've saved\n\nWhen the user asks about something they previously told you:\n1. Use the recallMemory tool to look up specific information\n2. Use the listMemories tool to see all stored memories if needed\n\nBe proactive about saving relevant preferences, facts, and context the user shares.",
       body: {
         message:
           "Remember that my name is Alex and my favorite programming language is TypeScript.",
@@ -214,7 +245,7 @@ const RecipeSchema = z.object({
   },
 
   {
-    id: 9,
+    id: 10,
     title: "Guardrails: Keeping Agents On Topic",
     category: "Agent Patterns",
     section: "III. Agent Patterns",
@@ -237,6 +268,7 @@ const advice = await generateText({ prompt: userMessage });`,
     demo: {
       type: "json",
       endpoint: "/api/agents/guardrails",
+      systemPrompt: "Phase 1: Classify whether the query is a personal finance question. Phase 2: If allowed, generate finance advice.",
       body: {
         message: "How should I start budgeting on a $50k salary?",
       },
@@ -258,7 +290,7 @@ const advice = await generateText({ prompt: userMessage });`,
   },
 
   {
-    id: 10,
+    id: 11,
     title: "Human-in-the-Loop",
     category: "Agent Patterns",
     section: "III. Agent Patterns",
@@ -271,6 +303,7 @@ const advice = await generateText({ prompt: userMessage });`,
     demo: {
       type: "multi-step",
       proposeEndpoint: "/api/agents/human-in-loop",
+      systemPrompt: "You are an agent that proposes actions for human approval before executing them.\n\nYou MUST ALWAYS use one of the available tools to propose an action. NEVER describe the action in text only.\n\nAvailable tools:\n- sendEmail: Propose sending an email\n- deleteData: Propose deleting data\n- publishContent: Propose publishing content\n\nYou MUST call the appropriate tool. The action will be queued for human review.",
       proposeBody: {
         message:
           "Send an email to john@example.com letting him know the project is ready for review.",
@@ -282,7 +315,7 @@ const advice = await generateText({ prompt: userMessage });`,
 
   // ─── SECTION IV: ORCHESTRATION ────────────────────────────────────────
   {
-    id: 11,
+    id: 12,
     title: "Supervisor Agent: Routing to Specialists",
     category: "Orchestration",
     section: "IV. Orchestration",
@@ -295,6 +328,7 @@ const advice = await generateText({ prompt: userMessage });`,
     demo: {
       type: "sse",
       endpoint: "/api/agents/supervisor",
+      systemPrompt: "You are a supervisor agent that routes user queries to the appropriate specialist agent.\n\nAvailable agents:\n- weather: Handles weather queries\n- hackernews: Handles Hacker News queries\n- knowledge: Handles movie queries\n\nAnalyze the query, route to the appropriate agent(s) using routeToAgent, and synthesize the results. Always use the routeToAgent tool — never answer domain questions directly.",
       body: {
         message:
           "What is the weather in London and what are the top stories on Hacker News today?",
@@ -303,7 +337,7 @@ const advice = await generateText({ prompt: userMessage });`,
   },
 
   {
-    id: 12,
+    id: 13,
     title: "Parallel Task Delegation",
     category: "Orchestration",
     section: "IV. Orchestration",
@@ -316,6 +350,7 @@ const advice = await generateText({ prompt: userMessage });`,
     demo: {
       type: "sse",
       endpoint: "/api/agents/task",
+      systemPrompt: "You are a task delegation agent that breaks complex queries into parallel sub-tasks.\n\nWhen you receive a complex query:\n1. Analyze what information is needed\n2. Create individual tasks using the createTask tool for each distinct sub-query\n3. Tasks will be executed in parallel for efficiency\n\nAvailable agents: weather, hackernews, knowledge. Create one task per distinct information need.",
       body: {
         message:
           "I need three things: the weather in Paris, the top Hacker News story, and a good sci-fi movie recommendation.",
@@ -324,7 +359,7 @@ const advice = await generateText({ prompt: userMessage });`,
   },
 
   {
-    id: 13,
+    id: 14,
     title: "Why Build a Custom Agent?",
     category: "Orchestration",
     section: "IV. Orchestration",
@@ -338,7 +373,7 @@ const advice = await generateText({ prompt: userMessage });`,
 
   // ─── SECTION V: PRODUCTION CONCERNS ───────────────────────────────────
   {
-    id: 14,
+    id: 15,
     title: "Security & Auth",
     category: "Production",
     section: "V. Production Concerns",
@@ -380,7 +415,7 @@ app.use("/api/*", async (c, next) => {
   },
 
   {
-    id: 15,
+    id: 16,
     title: "Sandboxes: Running Untrusted Code",
     category: "Production",
     section: "V. Production Concerns",
@@ -393,6 +428,7 @@ app.use("/api/*", async (c, next) => {
     demo: {
       type: "sse",
       endpoint: "/api/agents/coding",
+      systemPrompt: "You are a coding agent that writes and executes JavaScript code to solve problems.\n\nWhen asked to solve a problem:\n1. Write clear, well-commented JavaScript code\n2. Use the executeCode tool to run it\n3. Analyze the output and present the results\n\nGuidelines: write pure JavaScript (no imports), use console.log() for output, keep code concise. The execution environment is sandboxed with no file system or network access.",
       body: {
         message:
           "Calculate the first 15 numbers in the Fibonacci sequence and tell me which ones are prime.",
@@ -401,7 +437,7 @@ app.use("/api/*", async (c, next) => {
   },
 
   {
-    id: 16,
+    id: 17,
     title: "Observability & Cost",
     category: "Production",
     section: "V. Production Concerns",
@@ -424,7 +460,7 @@ app.use("/api/*", async (c, next) => {
   },
 
   {
-    id: 17,
+    id: 18,
     title: "MCP: Model Context Protocol",
     category: "Production",
     section: "V. Production Concerns",
@@ -445,7 +481,7 @@ const result = await mcpClient.callTool("search", {
   },
 
   {
-    id: 18,
+    id: 19,
     title: "Workflows: Putting It All Together",
     category: "Production",
     section: "V. Production Concerns",

@@ -1,6 +1,7 @@
 import { type Component, For, Show } from "solid-js";
 import type { SlideConfig } from "../types";
 import { badgeClass } from "../lib/section-colors";
+import CodeBlock from "./CodeBlock";
 
 interface Props {
   slide: SlideConfig;
@@ -40,11 +41,7 @@ const SlideContent: Component<Props> = (props) => {
 
       {/* Code snippet */}
       <Show when={props.slide.code}>
-        <div class="code-block rounded-xl p-5">
-          <pre class="overflow-x-auto font-mono text-[13px] leading-relaxed text-primary/90">
-            <code>{props.slide.code}</code>
-          </pre>
-        </div>
+        <CodeBlock code={props.slide.code!} />
       </Show>
     </div>
   );

@@ -39,10 +39,28 @@ export async function runDemo(
   }
 }
 
+function emitPromptContext(
+  systemPrompt: string | undefined,
+  userPrompt: string | undefined,
+  cb: Pick<DemoCallbacks, "addLine">,
+): void {
+  if (systemPrompt) {
+    cb.addLine("system-prompt", `System Prompt:\n${systemPrompt}`);
+    cb.addLine("info", "");
+  }
+  if (userPrompt) {
+    cb.addLine("user-prompt", `User Prompt:\n${userPrompt}`);
+    cb.addLine("info", "");
+  }
+}
+
 async function runJsonDemo(
   demo: Extract<DemoConfig, { type: "json" }>,
   cb: DemoCallbacks,
 ): Promise<void> {
+  const userPrompt = String(demo.body.prompt ?? demo.body.message ?? "");
+  emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
+
   if (demo.steps) {
     // Multi-step JSON demo (e.g. auth with different keys)
     for (const step of demo.steps) {
@@ -73,6 +91,9 @@ async function runSseDemo(
   demo: Extract<DemoConfig, { type: "sse" }>,
   cb: DemoCallbacks,
 ): Promise<void> {
+  const userPrompt = String(demo.body.message ?? demo.body.prompt ?? "");
+  emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
+
   cb.addLine("info", `POST ${demo.endpoint}`);
   cb.addLine("info", "--- stream starts ---");
   cb.addLine("info", "");
@@ -134,6 +155,9 @@ async function runMultiStepDemo(
   demo: Extract<DemoConfig, { type: "multi-step" }>,
   cb: DemoCallbacks,
 ): Promise<void> {
+  const userPrompt = String(demo.proposeBody.message ?? demo.proposeBody.prompt ?? "");
+  emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
+
   cb.addLine("info", "Phase 1: Proposing action...");
   cb.addLine("info", `POST ${demo.proposeEndpoint}`);
   cb.addLine("info", "");

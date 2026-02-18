@@ -7,7 +7,9 @@ export type TerminalLineType =
   | "error"
   | "info"
   | "success"
-  | "warning";
+  | "warning"
+  | "system-prompt"
+  | "user-prompt";
 
 export interface TerminalLine {
   id: string;
@@ -22,6 +24,7 @@ export interface JsonDemoConfig {
   endpoint: string;
   method?: "GET" | "POST";
   body: Record<string, unknown>;
+  systemPrompt?: string;
   /** Steps for multi-request JSON demos (e.g. auth with 3 attempts) */
   steps?: Array<{
     label: string;
@@ -35,6 +38,7 @@ export interface SseDemoConfig {
   type: "sse";
   endpoint: string;
   body: Record<string, unknown>;
+  systemPrompt?: string;
 }
 
 export interface MultiStepDemoConfig {
@@ -46,6 +50,7 @@ export interface MultiStepDemoConfig {
   approveEndpoint: string;
   /** Field in phase 1 response that contains the action ID */
   actionIdPath: string;
+  systemPrompt?: string;
 }
 
 export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig;

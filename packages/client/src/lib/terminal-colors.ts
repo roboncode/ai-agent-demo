@@ -10,6 +10,8 @@ const typeColorMap: Record<TerminalLineType, string> = {
   info: "text-muted",
   success: "text-ansi-green",
   warning: "text-ansi-yellow",
+  "system-prompt": "text-ansi-magenta",
+  "user-prompt": "text-ansi-cyan",
 };
 
 export function getLineColorClass(type: TerminalLineType): string {

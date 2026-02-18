@@ -14,26 +14,36 @@ import { badgeClass } from "./lib/section-colors";
 function App() {
   const [slideIndex, setSlideIndex] = createSignal(0);
   const [showShortcuts, setShowShortcuts] = createSignal(false);
-  const [lines, setLines] = createSignal<TerminalLine[]>([]);
+  // Per-slide terminal output: keyed by slide index
+  const [slideLines, setSlideLines] = createSignal<Record<number, TerminalLine[]>>({});
   const [streamingText, setStreamingText] = createSignal("");
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [isRunning, setIsRunning] = createSignal(false);
-  const [awaitingApproval, setAwaitingApproval] = createSignal<string | null>(
-    null,
-  );
+  const [awaitingApproval, setAwaitingApproval] = createSignal<string | null>(null);
 
   const currentSlide = createMemo(() => slides[slideIndex()]);
   const hasDemo = createMemo(() => !!currentSlide().demo);
+  // Derived: lines for the currently visible slide
+  const lines = createMemo(() => slideLines()[slideIndex()] ?? []);
 
   let lineCounter = 0;
 
   function addLine(type: TerminalLine["type"], content: string) {
     const id = `line-${lineCounter++}`;
-    setLines((prev) => [...prev, { id, type, content }]);
+    const idx = slideIndex();
+    setSlideLines((prev) => ({
+      ...prev,
+      [idx]: [...(prev[idx] ?? []), { id, type, content }],
+    }));
   }
 
   function clearTerminal() {
-    setLines([]);
+    const idx = slideIndex();
+    setSlideLines((prev) => {
+      const next = { ...prev };
+      delete next[idx];
+      return next;
+    });
     setStreamingText("");
     setAwaitingApproval(null);
   }
@@ -41,8 +51,11 @@ function App() {
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
       setSlideIndex(index);
+      // Stop any in-flight run; preserve per-slide output
       setIsRunning(false);
       setIsStreaming(false);
+      setStreamingText("");
+      setAwaitingApproval(null);
     }
   }
 
@@ -50,6 +63,7 @@ function App() {
     const demo = currentSlide().demo;
     if (!demo || isRunning()) return;
 
+    // Always clear this slide's previous output before a fresh run
     clearTerminal();
     setIsRunning(true);
 
