@@ -8,9 +8,9 @@ interface Props {
 
 const SlideNav: Component<Props> = (props) => {
   return (
-    <div class="flex h-10 items-center justify-between border-t border-border bg-root px-6">
-      <span class="font-mono text-xs text-muted">
-        {props.current + 1} / {props.total}
+    <div class="bottom-nav relative z-10 flex h-11 items-center justify-between px-8">
+      <span class="font-mono text-[11px] tabular-nums text-muted">
+        {String(props.current + 1).padStart(2, "0")} / {String(props.total).padStart(2, "0")}
       </span>
 
       <div class="flex items-center gap-1.5">
@@ -18,20 +18,20 @@ const SlideNav: Component<Props> = (props) => {
           {(_, i) => (
             <button
               onClick={() => props.onNavigate(i())}
-              class={`h-2 rounded-full transition-all ${
+              class={`rounded-full transition-all duration-200 ${
                 i() === props.current
-                  ? "w-6 bg-accent"
-                  : "w-2 bg-muted/40 hover:bg-muted"
+                  ? "h-2.5 w-7 bg-accent shadow-[0_0_8px_rgba(52,216,204,0.3)]"
+                  : "h-2 w-2 bg-muted/30 hover:bg-muted/60"
               }`}
             />
           )}
         </For>
       </div>
 
-      <span class="font-mono text-xs text-muted">
-        <kbd class="rounded border border-border px-1.5 py-0.5">←</kbd>{" "}
-        <kbd class="rounded border border-border px-1.5 py-0.5">→</kbd>
-      </span>
+      <div class="flex items-center gap-1.5 font-mono text-[11px] text-muted">
+        <kbd class="rounded border border-border-subtle bg-raised/50 px-1.5 py-0.5 text-[10px]">←</kbd>
+        <kbd class="rounded border border-border-subtle bg-raised/50 px-1.5 py-0.5 text-[10px]">→</kbd>
+      </div>
     </div>
   );
 };

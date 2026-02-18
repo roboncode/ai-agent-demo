@@ -9,18 +9,19 @@ interface Props {
 
 const RunButton: Component<Props> = (props) => {
   return (
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3">
       <button
         onClick={props.onRun}
         disabled={props.isRunning}
-        class="rounded-md bg-accent px-4 py-1.5 font-mono text-xs font-bold text-root transition-colors hover:bg-accent-dim disabled:opacity-40"
+        class="btn-glow flex items-center gap-2 rounded-lg bg-accent px-5 py-2 font-mono text-xs font-bold text-root transition-all hover:bg-accent-bright disabled:opacity-40 disabled:shadow-none"
       >
-        {props.isRunning ? "Running..." : "Run"}
+        {props.isRunning && <span class="spinner" />}
+        {props.isRunning ? "Running..." : "Run Demo"}
       </button>
       {props.hasOutput && !props.isRunning && (
         <button
           onClick={props.onClear}
-          class="rounded-md border border-border px-3 py-1.5 font-mono text-xs text-muted transition-colors hover:text-primary"
+          class="rounded-lg border border-border px-4 py-2 font-mono text-xs text-muted transition-all hover:border-border hover:text-secondary"
         >
           Clear
         </button>

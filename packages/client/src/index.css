@@ -7,22 +7,24 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* Surfaces */
-  --color-root: #0a0a0f;
-  --color-slide: #111118;
-  --color-terminal: #0c0c12;
-  --color-raised: #1a1a24;
-  --color-border: #2a2a3a;
+  --color-root: #08080d;
+  --color-slide: #0e0e16;
+  --color-terminal: #0a0b10;
+  --color-raised: #161622;
+  --color-border: #1e1e30;
+  --color-border-subtle: #151524;
 
   /* Text */
-  --color-primary: #e8e8ed;
-  --color-secondary: #9b9bab;
-  --color-muted: #5a5a6e;
-  --color-heading: #f4f4f7;
+  --color-primary: #e4e4ec;
+  --color-secondary: #a0a0b8;
+  --color-muted: #55556e;
+  --color-heading: #f0f0f6;
 
   /* Accent */
-  --color-accent: #22d3c5;
-  --color-accent-dim: #1a9e94;
-  --color-accent-glow: #22d3c540;
+  --color-accent: #34d8cc;
+  --color-accent-dim: #2ab0a6;
+  --color-accent-glow: #34d8cc30;
+  --color-accent-bright: #5cffe8;
 
   /* ANSI terminal colors */
   --color-ansi-red: #f87171;
@@ -32,23 +34,30 @@
   --color-ansi-magenta: #c084fc;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: var(--font-body);
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
+/* ─── Scrollbar ───────────────────────────────────────────────── */
 
-/* Custom scrollbar for terminal */
 .terminal-scroll::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 .terminal-scroll::-webkit-scrollbar-track {
@@ -64,7 +73,21 @@ body,
   background: var(--color-muted);
 }
 
-/* Blinking cursor */
+.slide-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.slide-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.slide-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 2px;
+}
+
+/* ─── Blinking cursor ─────────────────────────────────────────── */
+
 @keyframes blink {
   0%,
   100% {
@@ -79,18 +102,172 @@ body,
   animation: blink 1s step-end infinite;
 }
 
-/* Slide transitions */
-.slide-enter {
-  animation: slideIn 0.3s ease-out;
-}
+/* ─── Slide enter transition ──────────────────────────────────── */
 
-@keyframes slideIn {
+@keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateX(20px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
+    transform: translateY(0);
   }
+}
+
+.slide-enter {
+  animation: fadeSlideIn 0.35s ease-out;
+}
+
+/* ─── Subtle noise texture on slide panel ─────────────────────── */
+
+.slide-panel {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(34, 211, 197, 0.03) 0%, transparent 70%),
+    var(--color-slide);
+}
+
+/* ─── Terminal panel ──────────────────────────────────────────── */
+
+.terminal-panel {
+  background: var(--color-root);
+}
+
+/* ─── Code block styling ──────────────────────────────────────── */
+
+.code-block {
+  background:
+    linear-gradient(135deg, rgba(34, 211, 197, 0.04) 0%, transparent 50%),
+    var(--color-terminal);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+/* ─── Glow button hover ───────────────────────────────────────── */
+
+.btn-glow {
+  box-shadow: 0 0 0 rgba(34, 216, 204, 0);
+  transition: all 0.2s ease;
+}
+
+.btn-glow:hover:not(:disabled) {
+  box-shadow: 0 0 16px rgba(34, 216, 204, 0.3);
+}
+
+/* ─── Section badge — base + per-section color variants ──────── */
+
+.section-badge {
+  background: linear-gradient(135deg, var(--badge-bg-hi) 0%, var(--badge-bg-lo) 100%);
+  border: 1px solid var(--badge-border);
+  box-shadow: 0 0 12px var(--badge-glow);
+  color: var(--badge-text);
+}
+
+/* I. Foundations — teal */
+.badge-i {
+  --badge-text:   #34d8cc;
+  --badge-bg-hi:  rgba(52, 216, 204, 0.15);
+  --badge-bg-lo:  rgba(52, 216, 204, 0.05);
+  --badge-border: rgba(52, 216, 204, 0.30);
+  --badge-glow:   rgba(52, 216, 204, 0.10);
+}
+
+/* II. From LLM to Agent — sky blue */
+.badge-ii {
+  --badge-text:   #38bdf8;
+  --badge-bg-hi:  rgba(56, 189, 248, 0.15);
+  --badge-bg-lo:  rgba(56, 189, 248, 0.05);
+  --badge-border: rgba(56, 189, 248, 0.30);
+  --badge-glow:   rgba(56, 189, 248, 0.10);
+}
+
+/* III. Agent Patterns — violet */
+.badge-iii {
+  --badge-text:   #a78bfa;
+  --badge-bg-hi:  rgba(167, 139, 250, 0.15);
+  --badge-bg-lo:  rgba(167, 139, 250, 0.05);
+  --badge-border: rgba(167, 139, 250, 0.30);
+  --badge-glow:   rgba(167, 139, 250, 0.10);
+}
+
+/* IV. Orchestration — amber */
+.badge-iv {
+  --badge-text:   #fbbf24;
+  --badge-bg-hi:  rgba(251, 191, 36, 0.15);
+  --badge-bg-lo:  rgba(251, 191, 36, 0.05);
+  --badge-border: rgba(251, 191, 36, 0.30);
+  --badge-glow:   rgba(251, 191, 36, 0.10);
+}
+
+/* V. Production Concerns — rose */
+.badge-v {
+  --badge-text:   #fb7185;
+  --badge-bg-hi:  rgba(251, 113, 133, 0.15);
+  --badge-bg-lo:  rgba(251, 113, 133, 0.05);
+  --badge-border: rgba(251, 113, 133, 0.30);
+  --badge-glow:   rgba(251, 113, 133, 0.10);
+}
+
+/* ─── Top bar ─────────────────────────────────────────────────── */
+
+.top-bar {
+  background: linear-gradient(180deg, rgba(14, 14, 22, 0.95) 0%, rgba(8, 8, 13, 0.98) 100%);
+  border-bottom: 1px solid var(--color-border-subtle);
+  backdrop-filter: blur(12px);
+}
+
+/* ─── Terminal title bar ──────────────────────────────────────── */
+
+.terminal-titlebar {
+  background: linear-gradient(180deg, rgba(22, 22, 36, 0.8) 0%, rgba(14, 14, 22, 0.6) 100%);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* ─── Bottom nav ──────────────────────────────────────────────── */
+
+.bottom-nav {
+  background: linear-gradient(0deg, rgba(8, 8, 13, 0.98) 0%, rgba(14, 14, 22, 0.95) 100%);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* ─── Divider between panels ──────────────────────────────────── */
+
+.panel-divider {
+  position: relative;
+}
+
+.panel-divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--color-border) 15%,
+    var(--color-accent-dim) 50%,
+    var(--color-border) 85%,
+    transparent 100%
+  );
+}
+
+/* ─── Running spinner ─────────────────────────────────────────── */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }

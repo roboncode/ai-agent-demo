@@ -8,6 +8,7 @@ import Terminal from "./components/Terminal";
 import RunButton from "./components/RunButton";
 import ApprovalButtons from "./components/ApprovalButtons";
 import { runDemo, runApproval } from "./lib/demo-runner";
+import { badgeClass } from "./lib/section-colors";
 
 function App() {
   const [slideIndex, setSlideIndex] = createSignal(0);
@@ -35,7 +36,6 @@ function App() {
     setAwaitingApproval(null);
   }
 
-  // Clear terminal when navigating slides
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
       setSlideIndex(index);
@@ -75,7 +75,6 @@ function App() {
     setIsRunning(false);
   }
 
-  // Keyboard navigation
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowRight" || e.key === " ") {
       e.preventDefault();
@@ -118,13 +117,16 @@ function App() {
   };
 
   return (
-    <div class="flex h-full flex-col bg-root">
+    <div class="flex h-full flex-col bg-root font-body">
       {/* Top bar */}
-      <div class="flex h-12 items-center justify-between border-b border-border px-6">
-        <span class="font-display text-sm font-bold tracking-wide text-heading">
-          Building AI Agents
-        </span>
-        <span class="font-mono text-xs text-muted">
+      <div class="top-bar relative z-10 flex h-12 items-center justify-between px-8">
+        <div class="flex items-center gap-3">
+          <div class="h-2 w-2 rounded-full bg-accent shadow-[0_0_8px_rgba(52,216,204,0.4)]" />
+          <span class="font-display text-sm font-bold tracking-wider text-heading uppercase">
+            Building AI Agents
+          </span>
+        </div>
+        <span class={`section-badge ${badgeClass(currentSlide().section)} rounded-full px-3 py-1 font-mono text-[11px]`}>
           {currentSlide().category}
         </span>
       </div>

@@ -8,19 +8,19 @@ interface Props {
 
 const SlideShell: Component<Props> = (props) => {
   return (
-    <div class="flex h-full gap-0">
+    <div class="flex h-full">
       {/* Content panel */}
       <div
-        class={`flex-shrink-0 overflow-y-auto bg-slide ${
+        class={`slide-panel flex-shrink-0 ${
           props.hasDemo ? "w-[55%]" : "w-full"
         }`}
       >
         {props.content}
       </div>
 
-      {/* Terminal panel - only shown when slide has a demo */}
+      {/* Terminal panel — with gradient divider */}
       {props.hasDemo && (
-        <div class="w-[45%] border-l border-border bg-terminal p-3">
+        <div class="panel-divider terminal-panel flex w-[45%] flex-col p-4 pl-5">
           {props.terminal}
         </div>
       )}
