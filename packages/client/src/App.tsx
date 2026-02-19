@@ -9,6 +9,7 @@ import ApprovalButtons from "./components/ApprovalButtons";
 import ShortcutsHelp from "./components/ShortcutsHelp";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
+import { getStreamMode, setStreamMode } from "./lib/api";
 
 function App() {
   const initialSlide = () => {
@@ -24,9 +25,10 @@ function App() {
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [isRunning, setIsRunning] = createSignal(false);
   const [awaitingApproval, setAwaitingApproval] = createSignal<string | null>(null);
+  const [streamMode, setStreamModeSignal] = createSignal(getStreamMode());
 
   const currentSlide = createMemo(() => slides[slideIndex()]);
-  const hasDemo = createMemo(() => !!currentSlide().demo);
+  const hasDemo = createMemo(() => !!currentSlide().demo || !!currentSlide().demoButtons?.length);
   // Derived: lines for the currently visible slide
   const lines = createMemo(() => slideLines()[slideIndex()] ?? []);
 
@@ -105,6 +107,10 @@ function App() {
     } else if (e.key === "k" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault();
       clearTerminal();
+    } else if (e.key === "s" && !e.metaKey && !e.ctrlKey) {
+      const next = streamMode() === "sse" ? "ws" : "sse";
+      setStreamMode(next);
+      setStreamModeSignal(next);
     } else if (e.key === "?" || e.key === "/") {
       setShowShortcuts((v) => !v);
     } else if (e.key === "Escape") {
@@ -140,6 +146,17 @@ function App() {
           </span>
         </div>
         <div class="flex items-center gap-3">
+          <button
+            onClick={() => {
+              const next = streamMode() === "sse" ? "ws" : "sse";
+              setStreamMode(next);
+              setStreamModeSignal(next);
+            }}
+            class="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[10px] text-muted opacity-60 transition-colors hover:border-white/20 hover:text-primary hover:opacity-100"
+            title={`Stream mode: ${streamMode()}. Click or press S to toggle.`}
+          >
+            {streamMode() === "sse" ? "SSE" : "WS"}
+          </button>
           <span class="font-mono text-[10px] text-muted opacity-50" title={__BUILD_TIME__}>
             {new Date(__BUILD_TIME__).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
           </span>

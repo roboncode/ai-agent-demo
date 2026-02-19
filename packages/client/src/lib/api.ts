@@ -41,6 +41,24 @@ export async function postJson<T = unknown>(
   return data as T;
 }
 
+export async function deleteJson<T = unknown>(
+  endpoint: string,
+): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    method: "DELETE",
+    headers: getHeaders(),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `HTTP ${res.status}`), {
+      status: res.status,
+      data,
+    });
+  }
+  return data as T;
+}
+
 export async function postSse(
   endpoint: string,
   body: Record<string, unknown>,
@@ -60,4 +78,21 @@ export async function postSse(
   }
 
   return res;
+}
+
+let _streamMode: "sse" | "ws" | null = null;
+
+export function getStreamMode(): "sse" | "ws" {
+  if (_streamMode) return _streamMode;
+  const stored = localStorage.getItem("stream-mode");
+  if (stored === "sse" || stored === "ws") {
+    _streamMode = stored;
+    return stored;
+  }
+  return "sse";
+}
+
+export function setStreamMode(mode: "sse" | "ws") {
+  _streamMode = mode;
+  localStorage.setItem("stream-mode", mode);
 }

@@ -20,7 +20,7 @@ export interface TerminalLine {
   content: string;
 }
 
-export type DemoType = "json" | "sse" | "multi-step";
+export type DemoType = "json" | "sse" | "multi-step" | "delete";
 
 export interface JsonDemoConfig {
   type: "json";
@@ -63,7 +63,14 @@ export interface MultiStepDemoConfig {
   systemPrompt?: string;
 }
 
-export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig;
+export interface DeleteDemoConfig {
+  type: "delete";
+  endpoint: string;
+  /** Optional message shown in terminal before the request */
+  label?: string;
+}
+
+export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | DeleteDemoConfig;
 
 export interface SlideConfig {
   id: number;

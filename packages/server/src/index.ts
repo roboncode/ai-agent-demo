@@ -7,6 +7,7 @@ import generateRoutes from "./routes/generate/generate.routes.js";
 import toolsRoutes from "./routes/tools/tools.routes.js";
 import agentsRoutes from "./routes/agents/agents.routes.js";
 import memoryRoutes from "./routes/memory/memory.routes.js";
+import { createWebSocketHandler } from "./routes/ws/ws.route.js";
 
 const app = createApp();
 
@@ -37,7 +38,23 @@ if (process.env.NODE_ENV === "production") {
   app.get("*", serveStatic({ root: clientDist, path: "index.html" }));
 }
 
+const wsHandler = createWebSocketHandler(app);
+
 console.log(`Server running on http://localhost:${env.PORT}`);
 console.log(`API docs: http://localhost:${env.PORT}/reference`);
 
-export default { port: env.PORT, fetch: app.fetch, idleTimeout: 120 };
+export default {
+  port: env.PORT,
+  fetch(req: Request, server: any) {
+    if (new URL(req.url).pathname === "/api/ws") {
+      const upgraded = server.upgrade(req, {
+        data: { authenticated: false },
+      });
+      if (upgraded) return undefined;
+      return new Response("WebSocket upgrade failed", { status: 400 });
+    }
+    return app.fetch(req, server);
+  },
+  websocket: wsHandler,
+  idleTimeout: 120,
+};

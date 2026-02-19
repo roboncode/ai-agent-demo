@@ -109,13 +109,13 @@ const SlideContent: Component<Props> = (props) => {
 
         {/* Multiple demo buttons */}
         <Show when={props.slide.demoButtons?.length}>
-          <div class={`mt-8 flex flex-col gap-3 ${props.fullWidth ? "items-center" : ""}`}>
+          <div class="mt-8 flex w-full gap-3">
             <For each={props.slide.demoButtons}>
               {(btn) => (
                 <button
                   onClick={() => props.onRun?.(btn.demo)}
                   disabled={props.isRunning}
-                  class="demo-hint btn-glow inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  class="demo-hint btn-glow flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span class="text-accent">&#9654;</span>
                   <span class="font-body text-sm text-accent-dim">{btn.label}</span>

@@ -1,6 +1,7 @@
 import type { DemoConfig, TerminalLine } from "../types";
-import { postJson, postSse } from "./api";
-import { parseSseStream } from "./sse-parser";
+import { postJson, postSse, getStreamMode, deleteJson } from "./api";
+import { parseSseStream, type SseEvent } from "./sse-parser";
+import { wsStream } from "./ws-stream";
 import {
   formatToolCall,
   formatToolResult,
@@ -31,6 +32,9 @@ export async function runDemo(
         break;
       case "multi-step":
         await runMultiStepDemo(demo, cb);
+        break;
+      case "delete":
+        await runDeleteDemo(demo, cb);
         break;
     }
   } catch (err: any) {
@@ -122,6 +126,17 @@ async function runSseDemo(
   }
 }
 
+async function getEventStream(
+  endpoint: string,
+  body: Record<string, unknown>,
+): Promise<AsyncGenerator<SseEvent>> {
+  if (getStreamMode() === "ws") {
+    return wsStream(endpoint, body);
+  }
+  const response = await postSse(endpoint, body);
+  return parseSseStream(response);
+}
+
 async function runSingleSseStream(
   endpoint: string,
   body: Record<string, unknown>,
@@ -134,9 +149,9 @@ async function runSingleSseStream(
   cb.setIsStreaming(true);
   let streamBuffer = "";
 
-  const response = await postSse(endpoint, body);
+  const events = await getEventStream(endpoint, body);
 
-  for await (const event of parseSseStream(response)) {
+  for await (const event of events) {
     const data = JSON.parse(event.data);
 
     switch (event.event) {
@@ -209,9 +224,9 @@ async function runMultiStepDemo(
   cb.setIsStreaming(true);
   let actionId: string | null = null;
 
-  const response = await postSse(demo.proposeEndpoint, demo.proposeBody);
+  const events = await getEventStream(demo.proposeEndpoint, demo.proposeBody);
 
-  for await (const event of parseSseStream(response)) {
+  for await (const event of events) {
     const data = JSON.parse(event.data);
 
     switch (event.event) {
@@ -279,3 +294,17 @@ export async function runApproval(
   }
 }
 
+async function runDeleteDemo(
+  demo: Extract<DemoConfig, { type: "delete" }>,
+  cb: Pick<DemoCallbacks, "addLine">,
+): Promise<void> {
+  cb.addLine("info", `DELETE ${demo.endpoint}`);
+  cb.addLine("info", "");
+
+  try {
+    const result = await deleteJson<Record<string, any>>(demo.endpoint);
+    cb.addLine("success", JSON.stringify(result, null, 2));
+  } catch (err: any) {
+    cb.addLine("error", JSON.stringify(err.data ?? { error: err.message }, null, 2));
+  }
+}

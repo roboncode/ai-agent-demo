@@ -334,17 +334,35 @@ agent.run("My name is Alex, I prefer TypeScript.")
 agent.run("What's my favourite language?")
 // → calls recallMemory({ key: "language" })
 // → "Your favourite language is TypeScript."`,
-    demoHint: "Step 1 saves facts. Step 2 recalls them — proving persistence",
-    demo: {
-      type: "sse",
-      endpoint: "/api/agents/memory",
-      systemPrompt:
-        "You are a memory-enabled agent. You can remember information across conversations by saving and recalling memories.\n\nWhen the user tells you to remember something:\n1. Use the saveMemory tool to store the information with a descriptive key\n2. Confirm what you've saved\n\nWhen the user asks about something they previously told you:\n1. Use the recallMemory tool to look up specific information\n2. Use the listMemories tool to see all stored memories if needed\n\nBe proactive about saving relevant preferences, facts, and context the user shares.",
-      body: {
-        message:
-          "Remember that my name is Alex and my favorite programming language is TypeScript.",
+    demoButtons: [
+      {
+        label: "Save memories",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/memory",
+          body: {
+            message: "Remember that my name is Alex and my favorite programming language is TypeScript.",
+          },
+        },
       },
-    },
+      {
+        label: "Recall memories",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/memory",
+          body: {
+            message: "What do you remember about me? What is my favorite programming language?",
+          },
+        },
+      },
+      {
+        label: "Clear all memories",
+        demo: {
+          type: "delete",
+          endpoint: "/api/memory",
+        },
+      },
+    ],
   },
 
   {
@@ -505,7 +523,7 @@ const [weather, news, movie] = await Promise.all([
     category: "Orchestration",
     section: "IV. Orchestration",
     bullets: [
-      "ChatGPT is a generalist. Your agent is purpose-built for your problem.",
+      "Models, such as ChatGPT generalists. Your agent is purpose-built for your problem.",
       "You control: which model, which tools, what data, what guardrails",
     ],
     visual: Slide14Visual,
@@ -563,8 +581,8 @@ Headers: { "X-API-Key": "your-secret-key" }
     category: "Production",
     section: "V. Production Concerns",
     bullets: [
-      "When an agent writes code, you need a safe place to run it",
-      "Sandboxes: isolated execution, no file system or network access",
+      "A sandbox is an isolated environment where code runs but can't touch the host — no files, no network, no escape",
+      "For production with untrusted code: a VM sandbox isn't enough — use an isolated process or container",
     ],
     code: `const codingAgent = {
   system: "Write and execute JavaScript to solve problems.",

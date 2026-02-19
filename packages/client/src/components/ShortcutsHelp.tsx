@@ -1,5 +1,5 @@
-import type { Component } from "solid-js";
-import { FiCommand, FiX, FiPlus } from "solid-icons/fi";
+import type { Component, JSXElement } from "solid-js";
+import { FiCommand, FiX, FiPlus, FiChevronLeft, FiChevronRight } from "solid-icons/fi";
 
 interface Props {
   onClose: () => void;
@@ -8,15 +8,16 @@ interface Props {
 const isMac = navigator.platform.toUpperCase().includes("MAC");
 const mod = isMac ? "⌘" : "Ctrl";
 
-const shortcuts: { keys: string[]; label: string }[] = [
-  { keys: ["←", "→"],          label: "Navigate slides" },
+const shortcuts: { keys: JSXElement[]; label: string }[] = [
+  { keys: [<FiChevronLeft size={13} />, <FiChevronRight size={13} />], label: "Navigate slides" },
   { keys: ["Space"],            label: "Next slide" },
   { keys: [mod, "Shift", "K"], label: "Clear terminal" },
+  { keys: ["S"],                label: "Toggle SSE / WS mode" },
   { keys: ["?"],                label: "Show shortcuts" },
   { keys: ["Esc"],              label: "Close this panel" },
 ];
 
-const Key = (props: { children: string }) => (
+const Key = (props: { children: JSXElement }) => (
   <span class="inline-flex min-w-[1.75rem] items-center justify-center rounded-md border border-white/20 bg-white/10 px-2 py-1 font-mono text-[11px] font-semibold leading-none text-primary shadow-[inset_0_-1px_0_rgba(0,0,0,0.3),0_1px_0_rgba(255,255,255,0.06)]">
     {props.children}
   </span>
