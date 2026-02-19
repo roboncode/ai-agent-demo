@@ -1,0 +1,14 @@
+#!/bin/sh
+
+echo "Running build check before push..."
+
+bun run build
+BUILD_EXIT=$?
+
+if [ $BUILD_EXIT -ne 0 ]; then
+  echo ""
+  echo "Build failed — push aborted. Fix the errors above and try again."
+  exit 1
+fi
+
+echo "Build passed — pushing."

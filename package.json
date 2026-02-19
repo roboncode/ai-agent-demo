@@ -10,6 +10,7 @@
     "dev:server": "bun run --filter '@ai-agent-demo/server' dev",
     "dev:client": "bun run --filter 'client' dev",
     "build": "bun run --filter '*' build",
-    "start": "bun run --filter '*' start"
+    "start": "bun run --filter '*' start",
+    "prepare": "git config core.hooksPath .githooks"
   }
 }

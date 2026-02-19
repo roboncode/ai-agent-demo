@@ -10,6 +10,7 @@ import ShortcutsHelp from "./components/ShortcutsHelp";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
 import { getStreamMode, setStreamMode } from "./lib/api";
+import { FiGithub } from "solid-icons/fi";
 
 function App() {
   const initialSlide = () => {
@@ -160,6 +161,15 @@ function App() {
           <span class="font-mono text-[10px] text-muted opacity-50" title={__BUILD_TIME__}>
             {new Date(__BUILD_TIME__).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
           </span>
+          <a
+            href="https://github.com/roboncode/ai-agent-demo"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center justify-center rounded-full p-1.5 text-primary transition-colors hover:text-accent"
+            title="View on GitHub"
+          >
+            <FiGithub size={14} />
+          </a>
           <span class={`section-badge ${badgeClass(currentSlide().section)} rounded-full px-3 py-1 font-mono text-[11px]`}>
             {currentSlide().category}
           </span>
