@@ -13,7 +13,7 @@ const app = createApp();
 configureOpenAPI(app);
 
 // Health check (no auth)
-app.route("/", indexRoute);
+app.route("/health", indexRoute);
 
 // All /api routes require auth
 app.use("/api/*", authMiddleware);
@@ -23,6 +23,19 @@ app.route("/api/generate", generateRoutes);
 app.route("/api/tools", toolsRoutes);
 app.route("/api/agents", agentsRoutes);
 app.route("/api/memory", memoryRoutes);
+
+// In production, serve the built client as static files
+if (process.env.NODE_ENV === "production") {
+  const { serveStatic } = await import("hono/bun");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, resolve } = await import("node:path");
+
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const clientDist = resolve(__dirname, "../../client/dist");
+
+  app.use("*", serveStatic({ root: clientDist }));
+  app.get("*", serveStatic({ root: clientDist, path: "index.html" }));
+}
 
 console.log(`Server running on http://localhost:${env.PORT}`);
 console.log(`API docs: http://localhost:${env.PORT}/reference`);

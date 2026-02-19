@@ -279,18 +279,3 @@ export async function runApproval(
   }
 }
 
-function getNestedValue(obj: any, path: string): string | undefined {
-  const parts = path.split(".");
-  let current = obj;
-  for (const part of parts) {
-    // Handle array indexing like "pendingActions[0]"
-    const match = part.match(/^(\w+)\[(\d+)\]$/);
-    if (match) {
-      current = current?.[match[1]]?.[Number(match[2])];
-    } else {
-      current = current?.[part];
-    }
-    if (current == null) return undefined;
-  }
-  return String(current);
-}

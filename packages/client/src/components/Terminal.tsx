@@ -1,4 +1,4 @@
-import { type Component, For, createEffect, createSignal, onCleanup } from "solid-js";
+import { type Component, For, createEffect, createSignal } from "solid-js";
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
@@ -15,7 +15,7 @@ const SCROLL_THRESHOLD = 60; // px from bottom to be considered "at bottom"
 
 const Terminal: Component<Props> = (props) => {
   let scrollRef: HTMLDivElement | undefined;
-  const [isAtBottom, setIsAtBottom] = createSignal(true);
+  const [, setIsAtBottom] = createSignal(true);
   const [userScrolled, setUserScrolled] = createSignal(false);
 
   function checkIfAtBottom() {

@@ -1,0 +1,14 @@
+node_modules
+.git
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+.env
+.env.*
+.claude
+dist/
+docs/
+example/
+.playwright-mcp/

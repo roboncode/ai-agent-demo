@@ -1,5 +1,6 @@
 import type { SlideConfig } from "../types";
 import PromptsVisual from "../components/PromptsVisual";
+import Slide7Visual from "../components/Slide7Visual";
 import Slide14Visual from "../components/Slide14Visual";
 import Slide17Visual from "../components/Slide17Visual";
 import Slide18Visual from "../components/Slide18Visual";
@@ -261,15 +262,7 @@ agent.run("Compare Tokyo and New York weather")
       "LLMs have a training cutoff — they can't know recent or private data",
       "Knowledge tools let agents search external sources on the fly",
     ],
-    code: `const knowledgeAgent = {
-  system: "You are a movie knowledge agent.",
-  tools: [searchMovies, getMovieDetail]
-}
-
-agent.run("Who played the lead in Interstellar?")
-// → calls searchMovies({ query: "Interstellar" })
-// → calls getMovieDetail({ id: 157336 })
-// → answers with real data from the database`,
+    visual: Slide7Visual,
     demoHint: "The agent searches a movie database to answer a question",
     demo: {
       type: "sse",
@@ -294,6 +287,7 @@ agent.run("Who played the lead in Interstellar?")
     bullets: [
       "You define the shape — the AI fills it in",
       "Guaranteed valid JSON, not freeform text you have to parse",
+      "Trade-off: no streaming — the full response must arrive before it can be validated",
     ],
     code: `// You define the shape:
 {
