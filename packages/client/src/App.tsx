@@ -139,9 +139,14 @@ function App() {
             Building AI Agents
           </span>
         </div>
-        <span class={`section-badge ${badgeClass(currentSlide().section)} rounded-full px-3 py-1 font-mono text-[11px]`}>
-          {currentSlide().category}
-        </span>
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-[10px] text-muted opacity-50" title={__BUILD_TIME__}>
+            {new Date(__BUILD_TIME__).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+          </span>
+          <span class={`section-badge ${badgeClass(currentSlide().section)} rounded-full px-3 py-1 font-mono text-[11px]`}>
+            {currentSlide().category}
+          </span>
+        </div>
       </div>
 
       {/* Main area */}
