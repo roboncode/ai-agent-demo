@@ -2,6 +2,7 @@ import { type Component, For, createEffect } from "solid-js";
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
 import { FiTerminal } from "solid-icons/fi";
+import { MarkdownText } from "../lib/markdown";
 
 interface Props {
   lines: TLine[];
@@ -42,16 +43,24 @@ const Terminal: Component<Props> = (props) => {
       {/* Output area */}
       <div
         ref={scrollRef}
-        class="terminal-scroll flex-1 overflow-y-auto px-5 py-4 font-mono text-[13px] leading-[1.7]"
+        class="terminal-scroll flex-1 overflow-y-auto px-5 py-4 font-mono text-sm leading-[1.7]"
       >
         <For each={props.lines}>
-          {(line) => <TerminalLine line={line} />}
+          {(line, index) => (
+            <>
+              {index() > 0 && props.lines[index() - 1].type !== line.type && (
+                <div class="h-3" />
+              )}
+              <TerminalLine line={line} />
+            </>
+          )}
         </For>
 
         {props.streamingText && (
-          <div class="whitespace-pre-wrap break-words text-ansi-green">
-            {props.streamingText}
-          </div>
+          <MarkdownText
+            content={props.streamingText}
+            class="break-words text-ansi-green"
+          />
         )}
 
         {props.isStreaming && (

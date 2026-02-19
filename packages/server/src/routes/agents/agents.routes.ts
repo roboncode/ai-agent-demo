@@ -107,6 +107,21 @@ router.openapi(
   handlers.handleHumanInLoopAgent
 );
 
+// Human-in-the-loop agent — streaming variant
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/human-in-loop/stream",
+    tags: ["Agents"],
+    summary: "Human-in-the-loop agent (streaming)",
+    description:
+      "SSE variant: emits status, tool-call for each proposed action, proposal with IDs, then done",
+    request: { body: agentBody },
+    responses: sseResponse,
+  }),
+  handlers.handleHumanInLoopAgentStream
+);
+
 // Approve/reject pending action
 router.openapi(
   createRoute({
@@ -152,6 +167,21 @@ router.openapi(
     responses: agentResponse,
   }),
   handlers.handleGuardrailsAgent
+);
+
+// Guardrails agent — streaming variant
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/guardrails/stream",
+    tags: ["Agents"],
+    summary: "Guardrails finance advisor agent (streaming)",
+    description:
+      "SSE variant: emits classification event, then streams advice text via text-delta",
+    request: { body: agentBody },
+    responses: sseResponse,
+  }),
+  handlers.handleGuardrailsAgentStream
 );
 
 // Task agent (parallel execution)

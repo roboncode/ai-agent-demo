@@ -5,6 +5,9 @@ import {
   formatToolCall,
   formatToolResult,
   formatDoneStats,
+  formatClassification,
+  formatProposal,
+  formatApprovalResult,
 } from "./terminal-colors";
 
 interface DemoCallbacks {
@@ -91,17 +94,40 @@ async function runSseDemo(
   demo: Extract<DemoConfig, { type: "sse" }>,
   cb: DemoCallbacks,
 ): Promise<void> {
-  const userPrompt = String(demo.body.message ?? demo.body.prompt ?? "");
-  emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
+  if (demo.steps) {
+    // Multi-step SSE: run each step sequentially
+    emitPromptContext(demo.systemPrompt, undefined, cb);
+    for (const step of demo.steps) {
+      cb.addLine("info", `-- ${step.label} --`);
+      cb.addLine("info", "");
+      const stepUserPrompt = String(step.body.message ?? step.body.prompt ?? "");
+      if (stepUserPrompt) {
+        cb.addLine("user-prompt", `User Prompt:\n${stepUserPrompt}`);
+        cb.addLine("info", "");
+      }
+      await runSingleSseStream(demo.endpoint, step.body, cb);
+      cb.addLine("info", "");
+    }
+  } else {
+    const userPrompt = String(demo.body.message ?? demo.body.prompt ?? "");
+    emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
+    await runSingleSseStream(demo.endpoint, demo.body, cb);
+  }
+}
 
-  cb.addLine("info", `POST ${demo.endpoint}`);
+async function runSingleSseStream(
+  endpoint: string,
+  body: Record<string, unknown>,
+  cb: DemoCallbacks,
+): Promise<void> {
+  cb.addLine("info", `POST ${endpoint}`);
   cb.addLine("info", "--- stream starts ---");
   cb.addLine("info", "");
 
   cb.setIsStreaming(true);
   let streamBuffer = "";
 
-  const response = await postSse(demo.endpoint, demo.body);
+  const response = await postSse(endpoint, body);
 
   for await (const event of parseSseStream(response)) {
     const data = JSON.parse(event.data);
@@ -113,7 +139,6 @@ async function runSseDemo(
         break;
       }
       case "tool-call": {
-        // Flush any accumulated text
         if (streamBuffer) {
           cb.addLine("text", streamBuffer);
           streamBuffer = "";
@@ -123,18 +148,30 @@ async function runSseDemo(
         break;
       }
       case "tool-result": {
-        cb.addLine(
-          "tool-result",
-          formatToolResult(data.toolName, data.result),
-        );
+        cb.addLine("tool-result", formatToolResult(data.toolName, data.result));
+        break;
+      }
+      case "classification": {
+        if (streamBuffer) {
+          cb.addLine("text", streamBuffer);
+          streamBuffer = "";
+          cb.setStreamingText("");
+        }
+        for (const line of formatClassification(data)) {
+          cb.addLine(line.type, line.content);
+        }
         break;
       }
       case "status": {
+        if (streamBuffer) {
+          cb.addLine("text", streamBuffer);
+          streamBuffer = "";
+          cb.setStreamingText("");
+        }
         cb.addLine("status", `-- ${data.phase} --`);
         break;
       }
       case "done": {
-        // Flush remaining text
         if (streamBuffer) {
           cb.addLine("text", streamBuffer);
           streamBuffer = "";
@@ -158,26 +195,53 @@ async function runMultiStepDemo(
   const userPrompt = String(demo.proposeBody.message ?? demo.proposeBody.prompt ?? "");
   emitPromptContext(demo.systemPrompt, userPrompt || undefined, cb);
 
-  cb.addLine("info", "Phase 1: Proposing action...");
   cb.addLine("info", `POST ${demo.proposeEndpoint}`);
+  cb.addLine("info", "--- stream starts ---");
   cb.addLine("info", "");
 
-  const result = await postJson<Record<string, any>>(
-    demo.proposeEndpoint,
-    demo.proposeBody,
-  );
+  cb.setIsStreaming(true);
+  let actionId: string | null = null;
 
-  cb.addLine("success", JSON.stringify(result, null, 2));
+  const response = await postSse(demo.proposeEndpoint, demo.proposeBody);
 
-  // Extract action ID from response using the path
-  const actionId = getNestedValue(result, demo.actionIdPath);
+  for await (const event of parseSseStream(response)) {
+    const data = JSON.parse(event.data);
+
+    switch (event.event) {
+      case "status": {
+        cb.addLine("status", `-- ${data.phase} --`);
+        break;
+      }
+      case "tool-call": {
+        cb.addLine("tool-call", formatToolCall(data.toolName, data.args));
+        break;
+      }
+      case "proposal": {
+        for (const line of formatProposal(data)) {
+          cb.addLine(line.type, line.content);
+        }
+        if (data.actions?.[0]?.id) {
+          actionId = data.actions[0].id;
+        }
+        break;
+      }
+      case "done": {
+        cb.addLine("info", "");
+        cb.addLine("done", formatDoneStats(data));
+        break;
+      }
+    }
+  }
+
+  cb.setIsStreaming(false);
+  cb.addLine("info", "--- stream ends ---");
+
   if (!actionId) {
     cb.addLine("error", "No action ID found in response");
     return;
   }
 
   cb.addLine("info", "");
-  cb.addLine("warning", `Action ID: ${actionId}`);
   cb.addLine("info", "Awaiting human approval...");
 
   // Signal the UI to show approval buttons
@@ -191,19 +255,18 @@ export async function runApproval(
   cb: Pick<DemoCallbacks, "addLine">,
 ): Promise<void> {
   cb.addLine("info", "");
-  cb.addLine(
-    "info",
-    `Phase 2: ${approved ? "Approving" : "Rejecting"} action...`,
-  );
+  cb.addLine("status", `-- ${approved ? "approving" : "rejecting"} action --`);
   cb.addLine("info", `POST ${endpoint}`);
   cb.addLine("info", "");
 
   try {
-    const result = await postJson(endpoint, {
+    const result = await postJson<Record<string, any>>(endpoint, {
       id: actionId,
       approved,
     });
-    cb.addLine("success", JSON.stringify(result, null, 2));
+    for (const line of formatApprovalResult(result as any)) {
+      cb.addLine(line.type, line.content);
+    }
   } catch (err: any) {
     cb.addLine("error", JSON.stringify(err.data ?? { error: err.message }, null, 2));
   }

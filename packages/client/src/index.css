@@ -158,6 +158,22 @@
   line-height: 1.7;
 }
 
+/* ─── Icon glow container ────────────────────────────────────── */
+
+.icon-glow {
+  background: linear-gradient(135deg, rgba(52, 216, 204, 0.12) 0%, rgba(52, 216, 204, 0.04) 100%);
+  border: 1px solid rgba(52, 216, 204, 0.18);
+  box-shadow: 0 0 24px rgba(52, 216, 204, 0.08);
+}
+
+/* ─── Demo hint callout ──────────────────────────────────────── */
+
+.demo-hint {
+  background: linear-gradient(135deg, rgba(52, 216, 204, 0.08) 0%, rgba(52, 216, 204, 0.03) 100%);
+  border: 1px solid rgba(52, 216, 204, 0.15);
+  box-shadow: 0 0 16px rgba(52, 216, 204, 0.05);
+}
+
 /* ─── Glow button hover ───────────────────────────────────────── */
 
 .btn-glow {

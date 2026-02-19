@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { generateText, streamText, stepCountIs, tool } from "ai";
+import { generateText, generateObject, streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import { streamAgentResponse } from "../../lib/stream-helpers.js";
 import { getModel, extractUsage, mergeUsage, type UsageInfo } from "../../lib/ai-provider.js";
@@ -18,7 +18,7 @@ import { runWeatherAgent } from "../../agents/weather-agent.js";
 import { runHackernewsAgent } from "../../agents/hackernews-agent.js";
 import { runKnowledgeAgent } from "../../agents/knowledge-agent.js";
 import { runRecipeAgent } from "../../agents/recipe-agent.js";
-import { runGuardrailsAgent } from "../../agents/guardrails-agent.js";
+import { runGuardrailsAgent, GUARDRAILS_CONFIG } from "../../agents/guardrails-agent.js";
 
 function conversationId(existing?: string) {
   return existing ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -100,6 +100,53 @@ export async function handleHumanInLoopApprove(c: Context) {
   return c.json(result, 200);
 }
 
+// --- Human-in-loop (SSE stream) ---
+
+export async function handleHumanInLoopAgentStream(c: Context) {
+  const { message, conversationId: cid, model } = await c.req.json();
+  const convId = conversationId(cid);
+
+  return streamSSE(c, async (stream) => {
+    let id = 0;
+
+    await stream.writeSSE({
+      id: String(id++),
+      event: "status",
+      data: JSON.stringify({ phase: "proposing action" }),
+    });
+
+    const result = await runHumanInLoopAgent(message, model);
+
+    // Emit tool-call events for each proposed action
+    for (const action of result.pendingActions) {
+      await stream.writeSSE({
+        id: String(id++),
+        event: "tool-call",
+        data: JSON.stringify({ toolName: action.action, args: action.parameters }),
+      });
+    }
+
+    // Emit proposal event with action details for the approval step
+    await stream.writeSSE({
+      id: String(id++),
+      event: "proposal",
+      data: JSON.stringify({
+        actions: result.pendingActions.map((a: any) => ({
+          id: a.id,
+          action: a.action,
+          parameters: a.parameters,
+        })),
+      }),
+    });
+
+    await stream.writeSSE({
+      id: String(id++),
+      event: "done",
+      data: JSON.stringify({ conversationId: convId, usage: result.usage }),
+    });
+  });
+}
+
 // --- Structured output agent (JSON, not SSE) ---
 
 export async function handleRecipeAgent(c: Context) {
@@ -114,6 +161,97 @@ export async function handleGuardrailsAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   const result = await runGuardrailsAgent(message, model);
   return c.json({ ...result, conversationId: conversationId(cid) }, 200);
+}
+
+// --- Guardrails agent (SSE stream) ---
+
+export async function handleGuardrailsAgentStream(c: Context) {
+  const { message, conversationId: cid, model } = await c.req.json();
+  const convId = conversationId(cid);
+  const overallStart = performance.now();
+  const aiModel = getModel(model);
+  const { classificationSchema, classificationPrompt, advicePrompt } = GUARDRAILS_CONFIG;
+
+  return streamSSE(c, async (stream) => {
+    let id = 0;
+
+    // Phase 1: Classification
+    await stream.writeSSE({
+      id: String(id++),
+      event: "status",
+      data: JSON.stringify({ phase: "classifying" }),
+    });
+
+    const classifyStart = performance.now();
+    const classification = await generateObject({
+      model: aiModel,
+      system: classificationPrompt,
+      prompt: message,
+      schema: classificationSchema,
+    });
+    const classifyUsage = extractUsage(classification, classifyStart);
+    const { allowed, category, reason } = classification.object;
+
+    await stream.writeSSE({
+      id: String(id++),
+      event: "classification",
+      data: JSON.stringify({ allowed, category, reason }),
+    });
+
+    // If blocked, emit done immediately
+    if (!allowed) {
+      await stream.writeSSE({
+        id: String(id++),
+        event: "done",
+        data: JSON.stringify({
+          conversationId: convId,
+          usage: { ...classifyUsage, durationMs: Math.round(performance.now() - overallStart) },
+        }),
+      });
+      return;
+    }
+
+    // Phase 2: Stream advice
+    await stream.writeSSE({
+      id: String(id++),
+      event: "status",
+      data: JSON.stringify({ phase: "generating advice" }),
+    });
+
+    const adviceStart = performance.now();
+    const adviceResult = streamText({
+      model: aiModel,
+      system: advicePrompt,
+      prompt: message,
+    });
+
+    for await (const text of adviceResult.textStream) {
+      await stream.writeSSE({
+        id: String(id++),
+        event: "text-delta",
+        data: JSON.stringify({ text }),
+      });
+    }
+
+    const adviceUsage = await adviceResult.usage;
+    const adviceDurationMs = Math.round(performance.now() - adviceStart);
+    const rawCost = adviceUsage?.raw?.cost;
+
+    const totalUsage = mergeUsage(classifyUsage, {
+      inputTokens: adviceUsage?.inputTokens ?? 0,
+      outputTokens: adviceUsage?.outputTokens ?? 0,
+      totalTokens: adviceUsage?.totalTokens ?? ((adviceUsage?.inputTokens ?? 0) + (adviceUsage?.outputTokens ?? 0)),
+      cost: typeof rawCost === "number" ? rawCost : null,
+      durationMs: adviceDurationMs,
+    });
+    totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+    await stream.writeSSE({
+      id: String(id++),
+      event: "done",
+      data: JSON.stringify({ conversationId: convId, usage: totalUsage }),
+    });
+  });
 }
 
 // --- Task agent (custom hybrid streaming) ---

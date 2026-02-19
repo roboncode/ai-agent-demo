@@ -1,3 +1,6 @@
+import type { Component } from "solid-js";
+import type { IconTypes } from "solid-icons";
+
 export type TerminalLineType =
   | "text"
   | "tool-call"
@@ -39,6 +42,11 @@ export interface SseDemoConfig {
   endpoint: string;
   body: Record<string, unknown>;
   systemPrompt?: string;
+  /** Sequential SSE steps — each opens a separate stream */
+  steps?: Array<{
+    label: string;
+    body: Record<string, unknown>;
+  }>;
 }
 
 export interface MultiStepDemoConfig {
@@ -58,9 +66,14 @@ export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig;
 export interface SlideConfig {
   id: number;
   title: string;
+  subtitle?: string;
+  icon?: IconTypes;
+  /** Optional custom visual component rendered below bullets, replaces code block */
+  visual?: Component;
   category: string;
   section: string;
   bullets: string[];
+  demoHint?: string;
   /** Optional code snippet to display */
   code?: string;
   /** Optional demo configuration - slides without this hide the terminal */

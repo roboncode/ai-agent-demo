@@ -5,7 +5,7 @@ const typeColorMap: Record<TerminalLineType, string> = {
   "tool-call": "text-ansi-yellow",
   "tool-result": "text-ansi-cyan",
   status: "text-ansi-magenta italic",
-  done: "text-muted",
+  done: "text-primary",
   error: "text-ansi-red",
   info: "text-muted",
   success: "text-ansi-green",
@@ -30,6 +30,74 @@ export function formatToolResult(toolName: string, result: unknown): string {
   const truncated =
     resultStr.length > 200 ? resultStr.slice(0, 200) + "..." : resultStr;
   return `[result] ${toolName} => ${truncated}`;
+}
+
+export function formatClassification(data: {
+  allowed: boolean;
+  category: string;
+  reason: string;
+}): Array<{ type: TerminalLineType; content: string }> {
+  const lines: Array<{ type: TerminalLineType; content: string }> = [];
+  const icon = data.allowed ? "PASS" : "BLOCKED";
+  const statusType: TerminalLineType = data.allowed ? "success" : "error";
+
+  lines.push({
+    type: statusType,
+    content: `  ${icon} — ${data.category}`,
+  });
+  lines.push({
+    type: "info",
+    content: `  Reason: ${data.reason}`,
+  });
+  lines.push({ type: "info", content: "" });
+
+  return lines;
+}
+
+export function formatProposal(data: {
+  actions: Array<{ id: string; action: string; parameters: Record<string, unknown> }>;
+}): Array<{ type: TerminalLineType; content: string }> {
+  const lines: Array<{ type: TerminalLineType; content: string }> = [];
+
+  lines.push({ type: "info", content: "  Proposed actions:" });
+  lines.push({ type: "info", content: "" });
+
+  for (const action of data.actions) {
+    lines.push({
+      type: "warning",
+      content: `  ACTION — ${action.action}`,
+    });
+    for (const [key, value] of Object.entries(action.parameters)) {
+      lines.push({
+        type: "info",
+        content: `    ${key}: ${String(value)}`,
+      });
+    }
+    lines.push({ type: "info", content: "" });
+  }
+
+  return lines;
+}
+
+export function formatApprovalResult(data: {
+  id: string;
+  action: string;
+  status: string;
+  result: { executed: boolean; message: string };
+}): Array<{ type: TerminalLineType; content: string }> {
+  const lines: Array<{ type: TerminalLineType; content: string }> = [];
+  const isApproved = data.status === "approved";
+
+  lines.push({
+    type: isApproved ? "success" : "error",
+    content: `  ${isApproved ? "APPROVED" : "REJECTED"} — ${data.action}`,
+  });
+  lines.push({
+    type: "info",
+    content: `  ${data.result.message}`,
+  });
+
+  return lines;
 }
 
 export function formatDoneStats(data: {

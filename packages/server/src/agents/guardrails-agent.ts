@@ -67,3 +67,10 @@ export async function runGuardrailsAgent(message: string, model?: string) {
 
   return { allowed, category, reason, response: advice.text, usage: totalUsage };
 }
+
+/** Exported for the streaming SSE handler */
+export const GUARDRAILS_CONFIG = {
+  classificationSchema,
+  classificationPrompt: CLASSIFICATION_PROMPT,
+  advicePrompt: FINANCE_ADVISOR_PROMPT,
+};
