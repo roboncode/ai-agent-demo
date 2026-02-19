@@ -1,10 +1,10 @@
 import type { SlideConfig } from "../types";
 import PromptsVisual from "../components/PromptsVisual";
-import Slide7Visual from "../components/Slide7Visual";
-import Slide14Visual from "../components/Slide14Visual";
-import Slide17Visual from "../components/Slide17Visual";
-import Slide18Visual from "../components/Slide18Visual";
-import Slide19Visual from "../components/Slide19Visual";
+import KnowledgeSourcesVisual from "../components/KnowledgeSourcesVisual";
+import GeneralistVsCustomVisual from "../components/GeneralistVsCustomVisual";
+import ObservabilityCostVisual from "../components/ObservabilityCostVisual";
+import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
+import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
 import {
   FiCpu,
   FiMessageSquare,
@@ -262,7 +262,7 @@ agent.run("Compare Tokyo and New York weather")
       "LLMs have a training cutoff — they can't know recent or private data",
       "Knowledge tools let agents search external sources on the fly",
     ],
-    visual: Slide7Visual,
+    visual: KnowledgeSourcesVisual,
     demoHint: "The agent searches a movie database to answer a question",
     demo: {
       type: "sse",
@@ -526,7 +526,7 @@ const [weather, news, movie] = await Promise.all([
       "Models, such as ChatGPT generalists. Your agent is purpose-built for your problem.",
       "You control: which model, which tools, what data, what guardrails",
     ],
-    visual: Slide14Visual,
+    visual: GeneralistVsCustomVisual,
   },
 
   // ─── SECTION V: PRODUCTION CONCERNS ───────────────────────────────────
@@ -618,7 +618,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "Every call has a cost: track tokens, latency, and dollars",
       "Multi-step agents multiply costs",
     ],
-    visual: Slide17Visual,
+    visual: ObservabilityCostVisual,
   },
 
   {
@@ -632,7 +632,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "A standard for AI to discover and use tools — no hardcoding",
       "Any MCP-compatible tool works with any MCP-compatible agent",
     ],
-    visual: Slide18Visual,
+    visual: McpDiscoveryVisual,
   },
 
   {
@@ -645,6 +645,6 @@ agent.run("Find the first 15 Fibonacci primes")
     bullets: [
       "An agent is one step. A workflow chains agents with logic.",
     ],
-    visual: Slide19Visual,
+    visual: WorkflowPipelineVisual,
   },
 ];

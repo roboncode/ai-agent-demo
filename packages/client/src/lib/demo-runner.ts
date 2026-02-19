@@ -131,7 +131,27 @@ async function getEventStream(
   body: Record<string, unknown>,
 ): Promise<AsyncGenerator<SseEvent>> {
   if (getStreamMode() === "ws") {
-    return wsStream(endpoint, body);
+    try {
+      const gen = wsStream(endpoint, body);
+      // Pull the first event to verify the connection actually works
+      const first = await gen.next();
+      if (first.done) throw new Error("empty");
+      // Re-wrap: yield the buffered first event, then delegate the rest
+      return (async function* () {
+        yield first.value;
+        yield* gen;
+      })();
+    } catch {
+      // WS failed (VPN / proxy blocked it) — fall back to SSE for this request
+      const response = await postSse(endpoint, body);
+      return (async function* () {
+        yield {
+          event: "status",
+          data: JSON.stringify({ phase: "WS unavailable — falling back to SSE" }),
+        };
+        yield* parseSseStream(response);
+      })();
+    }
   }
   const response = await postSse(endpoint, body);
   return parseSseStream(response);
