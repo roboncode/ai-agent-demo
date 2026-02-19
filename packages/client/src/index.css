@@ -102,12 +102,44 @@
   animation: blink 1s step-end infinite;
 }
 
-/* ─── Slide enter transition ──────────────────────────────────── */
+/* ─── Slide enter transitions ────────────────────────────────── */
 
-@keyframes fadeSlideIn {
+@keyframes slideForward {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideBack {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.slide-enter {
+  animation: slideForward 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.slide-enter[data-dir="back"] {
+  animation: slideBack 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Staggered content reveal ───────────────────────────────── */
+
+@keyframes contentReveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
@@ -115,8 +147,35 @@
   }
 }
 
-.slide-enter {
-  animation: fadeSlideIn 0.35s ease-out;
+.reveal {
+  opacity: 0;
+  animation: contentReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.reveal-d1 { animation-delay: 0.06s; }
+.reveal-d2 { animation-delay: 0.12s; }
+.reveal-d3 { animation-delay: 0.18s; }
+.reveal-d4 { animation-delay: 0.24s; }
+.reveal-d5 { animation-delay: 0.30s; }
+.reveal-d6 { animation-delay: 0.36s; }
+.reveal-d7 { animation-delay: 0.42s; }
+.reveal-d8 { animation-delay: 0.48s; }
+
+/* ─── Terminal panel entrance ────────────────────────────────── */
+
+@keyframes panelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.terminal-enter {
+  animation: panelSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
 }
 
 /* ─── Subtle noise texture on slide panel ─────────────────────── */

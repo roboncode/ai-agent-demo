@@ -19,6 +19,7 @@ function App() {
     return isNaN(n) ? 0 : Math.min(Math.max(n - 1, 0), slides.length - 1);
   };
   const [slideIndex, setSlideIndex] = createSignal(initialSlide());
+  const [direction, setDirection] = createSignal<"forward" | "back">("forward");
   const [showShortcuts, setShowShortcuts] = createSignal(false);
   // Per-slide terminal output: keyed by slide index
   const [slideLines, setSlideLines] = createSignal<Record<number, TerminalLine[]>>({});
@@ -57,6 +58,7 @@ function App() {
 
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
+      setDirection(index > slideIndex() ? "forward" : "back");
       setSlideIndex(index);
       history.replaceState(null, "", `?s=${index + 1}`);
       // Stop any in-flight run; preserve per-slide output
@@ -176,30 +178,36 @@ function App() {
         </div>
       </div>
 
-      {/* Main area */}
-      <div class="slide-enter flex-1 overflow-hidden" style={`--slide-key: ${slideIndex()}`}>
-        <SlideShell
-          hasDemo={hasDemo()}
-          content={
-            <SlideContent
-              slide={currentSlide()}
-              fullWidth={!hasDemo()}
-              onRun={handleRun}
-              isRunning={isRunning()}
-            />
-          }
-          terminal={
-            hasDemo() ? (
-              <Terminal
-                lines={lines()}
-                streamingText={streamingText()}
-                isStreaming={isStreaming()}
-                title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
-                footer={terminalFooter()}
+      {/* Main area — keyed Show forces DOM recreation so CSS animations replay */}
+      <div class="flex-1 overflow-hidden">
+        <Show when={slideIndex() + 1} keyed>
+          {(_key) => (
+            <div class="slide-enter h-full" data-dir={direction() === "back" ? "back" : undefined}>
+              <SlideShell
+                hasDemo={hasDemo()}
+                content={
+                  <SlideContent
+                    slide={currentSlide()}
+                    fullWidth={!hasDemo()}
+                    onRun={handleRun}
+                    isRunning={isRunning()}
+                  />
+                }
+                terminal={
+                  hasDemo() ? (
+                    <Terminal
+                      lines={lines()}
+                      streamingText={streamingText()}
+                      isStreaming={isStreaming()}
+                      title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
+                      footer={terminalFooter()}
+                    />
+                  ) : undefined
+                }
               />
-            ) : undefined
-          }
-        />
+            </div>
+          )}
+        </Show>
       </div>
 
       {/* Bottom nav */}

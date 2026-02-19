@@ -20,7 +20,7 @@ const SlideShell: Component<Props> = (props) => {
 
       {/* Terminal panel — with gradient divider */}
       {props.hasDemo && (
-        <div class="panel-divider terminal-panel flex w-[45%] flex-col p-4 pl-5">
+        <div class="panel-divider terminal-panel terminal-enter flex w-[45%] flex-col p-4 pl-5">
           {props.terminal}
         </div>
       )}

@@ -18,6 +18,9 @@ interface Props {
   isRunning?: boolean;
 }
 
+/** Cap delay class at d8 */
+const d = (n: number) => `reveal reveal-d${Math.min(n, 8)}`;
+
 /* ─── Section Intro Layout ──────────────────────────────────────── */
 
 const SectionIntroContent: Component<{ slide: SlideConfig }> = (props) => {
@@ -53,7 +56,7 @@ const SectionIntroContent: Component<{ slide: SlideConfig }> = (props) => {
       {/* Content — left-aligned */}
       <div class="relative flex h-full flex-col justify-center px-20 py-16">
         {/* Section badge */}
-        <div class="mb-8">
+        <div class={`mb-8 ${d(1)}`}>
           <span
             class={`section-badge ${badgeClass(props.slide.section)} inline-block rounded-full px-4 py-1.5 font-mono text-xs font-medium tracking-wide`}
           >
@@ -63,20 +66,20 @@ const SectionIntroContent: Component<{ slide: SlideConfig }> = (props) => {
 
         {/* Accent bar */}
         <div
-          class="mb-8 h-1 w-20 rounded-full"
+          class={`mb-8 h-1 w-20 rounded-full ${d(2)}`}
           style={{ background: color() }}
         />
 
         {/* Title — larger than normal */}
         <h1
-          class="mb-4 font-display text-[3.75rem] font-bold leading-[1.1] tracking-tight text-heading"
+          class={`mb-4 font-display text-[3.75rem] font-bold leading-[1.1] tracking-tight text-heading ${d(3)}`}
         >
           {props.slide.title}
         </h1>
 
         {/* Subtitle */}
         <Show when={props.slide.subtitle}>
-          <p class="mb-12 max-w-[540px] font-body text-[1.15rem] leading-relaxed text-secondary">
+          <p class={`mb-12 max-w-[540px] font-body text-[1.15rem] leading-relaxed text-secondary ${d(4)}`}>
             {props.slide.subtitle}
           </p>
         </Show>
@@ -92,7 +95,7 @@ const SectionIntroContent: Component<{ slide: SlideConfig }> = (props) => {
           >
             <For each={props.slide.bullets}>
               {(topic, i) => (
-                <div class="flex items-center gap-5">
+                <div class={`flex items-center gap-5 ${d(5 + i())}`}>
                   <span
                     class="flex-shrink-0 font-mono text-[14px] font-bold"
                     style={{ color: color(), "min-width": "28px" }}
@@ -152,7 +155,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
       {/* Content — left-aligned */}
       <div class="relative flex h-full flex-col justify-center px-20 py-16">
         {/* Badge */}
-        <div class="mb-8">
+        <div class={`mb-8 ${d(1)}`}>
           <span
             class={`section-badge ${badgeClass(props.slide.section)} inline-block rounded-full px-4 py-1.5 font-mono text-xs font-medium tracking-wide`}
           >
@@ -162,20 +165,20 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
 
         {/* Multi-color spectrum bar */}
         <div
-          class="mb-8 h-1 w-32 rounded-full"
+          class={`mb-8 h-1 w-32 rounded-full ${d(2)}`}
           style={{
             background: "linear-gradient(90deg, #34d8cc 0%, #38bdf8 25%, #a78bfa 50%, #fbbf24 75%, #fb7185 100%)",
           }}
         />
 
         {/* Title */}
-        <h1 class="mb-4 font-display text-[4.25rem] font-bold leading-[1.05] tracking-tight text-heading">
+        <h1 class={`mb-4 font-display text-[4.25rem] font-bold leading-[1.05] tracking-tight text-heading ${d(3)}`}>
           {props.slide.title}
         </h1>
 
         {/* Subtitle */}
         <Show when={props.slide.subtitle}>
-          <p class="mb-14 max-w-[540px] font-body text-[1.2rem] leading-relaxed text-secondary">
+          <p class={`mb-14 max-w-[540px] font-body text-[1.2rem] leading-relaxed text-secondary ${d(4)}`}>
             {props.slide.subtitle}
           </p>
         </Show>
@@ -193,7 +196,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
               {(topic, i) => {
                 const color = () => sectionColors[i()]?.[1] ?? "#34d8cc";
                 return (
-                  <div class="flex items-center gap-5">
+                  <div class={`flex items-center gap-5 ${d(5 + i())}`}>
                     <span
                       class="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md font-mono text-[12px] font-bold"
                       style={{
@@ -259,7 +262,7 @@ const ConclusionContent: Component<{ slide: SlideConfig }> = (props) => {
       {/* Content — left-aligned */}
       <div class="relative flex h-full flex-col justify-center px-20 py-16">
         {/* Badge */}
-        <div class="mb-8">
+        <div class={`mb-8 ${d(1)}`}>
           <span
             class={`section-badge ${badgeClass(props.slide.section)} inline-block rounded-full px-4 py-1.5 font-mono text-xs font-medium tracking-wide`}
           >
@@ -269,18 +272,18 @@ const ConclusionContent: Component<{ slide: SlideConfig }> = (props) => {
 
         {/* Accent bar */}
         <div
-          class="mb-8 h-1 w-20 rounded-full"
+          class={`mb-8 h-1 w-20 rounded-full ${d(2)}`}
           style={{ background: color }}
         />
 
         {/* Title */}
-        <h1 class="mb-4 font-display text-[3.75rem] font-bold leading-[1.1] tracking-tight text-heading">
+        <h1 class={`mb-4 font-display text-[3.75rem] font-bold leading-[1.1] tracking-tight text-heading ${d(3)}`}>
           {props.slide.title}
         </h1>
 
         {/* Subtitle */}
         <Show when={props.slide.subtitle}>
-          <p class="mb-12 max-w-[540px] font-body text-[1.15rem] leading-relaxed text-secondary">
+          <p class={`mb-12 max-w-[540px] font-body text-[1.15rem] leading-relaxed text-secondary ${d(4)}`}>
             {props.slide.subtitle}
           </p>
         </Show>
@@ -295,8 +298,8 @@ const ConclusionContent: Component<{ slide: SlideConfig }> = (props) => {
             }}
           >
             <For each={props.slide.bullets}>
-              {(takeaway) => (
-                <div class="flex items-start gap-5">
+              {(takeaway, i) => (
+                <div class={`flex items-start gap-5 ${d(5 + i())}`}>
                   <span
                     class="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold"
                     style={{
@@ -331,6 +334,12 @@ const ConclusionContent: Component<{ slide: SlideConfig }> = (props) => {
 /* ─── Default Slide Layout ──────────────────────────────────────── */
 
 const DefaultSlideContent: Component<Props> = (props) => {
+  /** Delay step counter — accounts for optional elements being absent */
+  const iconStep = () => props.slide.icon ? 2 : -1;
+  const titleStep = () => props.slide.icon ? 3 : 2;
+  const subtitleStep = () => titleStep() + 1;
+  const bulletStart = () => subtitleStep() + 1;
+
   return (
     <div
       class={`slide-scroll h-full overflow-y-auto ${
@@ -341,7 +350,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
     >
       <div class={props.fullWidth ? "w-full max-w-[900px] text-center" : ""}>
         {/* Section badge */}
-        <div class={props.fullWidth ? "mb-5" : "mb-5"}>
+        <div class={`mb-5 ${d(1)}`}>
           <span
             class={`section-badge ${badgeClass(props.slide.section)} inline-block rounded-full px-4 py-1.5 font-mono text-xs font-medium tracking-wide`}
           >
@@ -351,7 +360,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Icon */}
         <Show when={props.slide.icon}>
-          <div class={props.fullWidth ? "mb-6 flex justify-center" : "mb-6"}>
+          <div class={`${props.fullWidth ? "mb-6 flex justify-center" : "mb-6"} ${d(iconStep())}`}>
             <div
               class={`icon-glow inline-flex items-center justify-center rounded-2xl ${
                 props.fullWidth ? "h-20 w-20" : "h-16 w-16"
@@ -370,7 +379,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
         <h1
           class={`mb-3 font-display font-bold leading-[1.15] tracking-tight text-heading ${
             props.fullWidth ? "text-[3.25rem]" : "text-[2.5rem]"
-          }`}
+          } ${d(titleStep())}`}
         >
           {props.slide.title}
         </h1>
@@ -378,9 +387,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
         {/* Subtitle */}
         <Show when={props.slide.subtitle}>
           <p
-            class={`mb-10 font-body text-[1.1rem] italic text-secondary ${
-              props.fullWidth ? "" : ""
-            }`}
+            class={`mb-10 font-body text-[1.1rem] italic text-secondary ${d(subtitleStep())}`}
           >
             {props.slide.subtitle}
           </p>
@@ -392,11 +399,11 @@ const DefaultSlideContent: Component<Props> = (props) => {
             class={`mb-10 space-y-6 ${props.fullWidth ? "mx-auto max-w-[600px]" : ""}`}
           >
             <For each={props.slide.bullets}>
-              {(bullet) => (
+              {(bullet, i) => (
                 <li
                   class={`flex items-start gap-4 font-body text-[1.25rem] leading-relaxed text-secondary ${
                     props.fullWidth ? "justify-center text-center" : ""
-                  }`}
+                  } ${d(bulletStart() + i())}`}
                 >
                   <Show when={!props.fullWidth}>
                     <span class="mt-[5px] flex-shrink-0 text-accent" style={{"filter": "drop-shadow(0 0 4px rgba(52,216,204,0.5))"}}>
@@ -412,12 +419,14 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Custom visual — takes priority over code block */}
         <Show when={props.slide.visual}>
-          {createComponent(props.slide.visual!, {})}
+          <div class={d(bulletStart())}>
+            {createComponent(props.slide.visual!, {})}
+          </div>
         </Show>
 
         {/* Code snippet — only if no custom visual */}
         <Show when={props.slide.code && !props.slide.visual}>
-          <div class="w-full text-left">
+          <div class={`w-full text-left ${d(bulletStart())}`}>
             <Show when={props.slide.codeLabel}>
               <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
                 {props.slide.codeLabel}
@@ -429,7 +438,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Multiple demo buttons */}
         <Show when={props.slide.demoButtons?.length}>
-          <div class="mt-8 flex w-full gap-3">
+          <div class={`mt-8 flex w-full gap-3 ${d(bulletStart() + 1)}`}>
             <For each={props.slide.demoButtons}>
               {(btn) => (
                 <button
@@ -450,7 +459,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
           <button
             onClick={() => props.onRun?.()}
             disabled={props.isRunning}
-            class="demo-hint btn-glow mt-8 inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            class={`demo-hint btn-glow mt-8 inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50 ${d(bulletStart() + 1)}`}
           >
             <span class="text-lg text-accent">
               {props.isRunning ? <span class="spinner inline-block" /> : <>&#9654;</>}
