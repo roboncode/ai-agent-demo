@@ -1,6 +1,4 @@
 import type { SlideConfig } from "../types";
-import IntroVisual from "../components/IntroVisual";
-import ClosingVisual from "../components/ClosingVisual";
 import PromptsVisual from "../components/PromptsVisual";
 import KnowledgeSourcesVisual from "../components/KnowledgeSourcesVisual";
 import GeneralistVsCustomVisual from "../components/GeneralistVsCustomVisual";
@@ -31,10 +29,8 @@ import {
   FiTrendingDown,
   FiLink,
   FiGitMerge,
-  FiPlay,
   FiAlertTriangle,
   FiAlertCircle,
-  FiFlag,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -43,11 +39,16 @@ export const slides: SlideConfig[] = [
     id: 22,
     title: "Building AI Agents",
     subtitle: "From raw LLM to production-ready agent, step by step",
-    icon: FiPlay,
     category: "Intro",
     section: "Introduction",
-    bullets: [],
-    visual: IntroVisual,
+    layout: "intro",
+    bullets: [
+      "Foundations — LLMs, prompts, and streaming",
+      "From LLM to Agent — Tools, decisions, and knowledge",
+      "Agent Patterns — Memory, guardrails, error handling",
+      "Orchestration — Supervisors and parallel tasks",
+      "Production — Security, cost, and deployment",
+    ],
   },
 
   // ─── SECTION I: FOUNDATIONS ────────────────────────────────────
@@ -882,10 +883,15 @@ agent.run("Find the first 15 Fibonacci primes")
     id: 30,
     title: "What We Covered",
     subtitle: "From prediction engine to production agent",
-    icon: FiFlag,
     category: "Conclusion",
     section: "Conclusion",
-    bullets: [],
-    visual: ClosingVisual,
+    layout: "conclusion",
+    bullets: [
+      "An LLM is just a prediction engine — tools turn it into an agent",
+      "Patterns like memory, guardrails, and retries make agents reliable",
+      "Orchestration lets multiple agents collaborate and parallelize",
+      "Production demands auth, injection defense, cost tracking, and observability",
+      "Start simple, measure everything, add complexity only when you need it",
+    ],
   },
 ];
