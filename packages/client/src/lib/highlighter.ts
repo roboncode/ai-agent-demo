@@ -1,15 +1,21 @@
-import { createHighlighter, type Highlighter } from "shiki";
+import { createHighlighterCore, type HighlighterCore } from "shiki/core";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
-let instance: Highlighter | null = null;
-let loading: Promise<Highlighter> | null = null;
+let instance: HighlighterCore | null = null;
+let loading: Promise<HighlighterCore> | null = null;
 
-export async function getHighlighter(): Promise<Highlighter> {
+export async function getHighlighter(): Promise<HighlighterCore> {
   if (instance) return instance;
   if (loading) return loading;
 
-  loading = createHighlighter({
-    themes: ["tokyo-night"],
-    langs: ["typescript", "json", "shellscript"],
+  loading = createHighlighterCore({
+    themes: [import("@shikijs/themes/tokyo-night")],
+    langs: [
+      import("@shikijs/langs/typescript"),
+      import("@shikijs/langs/json"),
+      import("@shikijs/langs/shellscript"),
+    ],
+    engine: createJavaScriptRegexEngine(),
   });
 
   instance = await loading;
