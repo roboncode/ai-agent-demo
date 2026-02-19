@@ -417,12 +417,14 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Code snippet — only if no custom visual */}
         <Show when={props.slide.code && !props.slide.visual}>
-          <Show when={props.slide.codeLabel}>
-            <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
-              {props.slide.codeLabel}
-            </p>
-          </Show>
-          <CodeBlock code={props.slide.code!} />
+          <div class="w-full text-left">
+            <Show when={props.slide.codeLabel}>
+              <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
+                {props.slide.codeLabel}
+              </p>
+            </Show>
+            <CodeBlock code={props.slide.code!} />
+          </div>
         </Show>
 
         {/* Multiple demo buttons */}
