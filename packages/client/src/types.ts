@@ -20,7 +20,7 @@ export interface TerminalLine {
   content: string;
 }
 
-export type DemoType = "json" | "sse" | "multi-step" | "delete";
+export type DemoType = "json" | "sse" | "multi-step" | "delete" | "simulate-stream";
 
 export interface JsonDemoConfig {
   type: "json";
@@ -70,7 +70,17 @@ export interface DeleteDemoConfig {
   label?: string;
 }
 
-export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | DeleteDemoConfig;
+export interface SimulateStreamDemoConfig {
+  type: "simulate-stream";
+  /** The full text to reveal word by word */
+  text: string;
+  /** Delay in ms between words (default 60) */
+  delayMs?: number;
+  systemPrompt?: string;
+  userPrompt?: string;
+}
+
+export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | DeleteDemoConfig | SimulateStreamDemoConfig;
 
 export interface SlideConfig {
   id: number;

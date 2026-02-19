@@ -36,6 +36,9 @@ export async function runDemo(
       case "delete":
         await runDeleteDemo(demo, cb);
         break;
+      case "simulate-stream":
+        await runSimulateStreamDemo(demo, cb);
+        break;
     }
   } catch (err: any) {
     cb.setIsStreaming(false);
@@ -327,4 +330,41 @@ async function runDeleteDemo(
   } catch (err: any) {
     cb.addLine("error", JSON.stringify(err.data ?? { error: err.message }, null, 2));
   }
+}
+
+async function runSimulateStreamDemo(
+  demo: Extract<DemoConfig, { type: "simulate-stream" }>,
+  cb: DemoCallbacks,
+): Promise<void> {
+  emitPromptContext(demo.systemPrompt, demo.userPrompt, cb);
+
+  cb.addLine("info", "POST /api/generate/stream  (simulated)");
+  cb.addLine("info", "--- stream starts ---");
+  cb.addLine("info", "");
+
+  cb.setIsStreaming(true);
+
+  const words = demo.text.split(/(\s+)/); // keep whitespace as separate tokens
+  const delay = demo.delayMs ?? 60;
+  let buffer = "";
+
+  for (const word of words) {
+    buffer += word;
+    cb.setStreamingText(buffer);
+    // only delay on actual words, not whitespace-only tokens
+    if (word.trim()) {
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  // Flush the buffer as a finished text line
+  cb.addLine("text", buffer);
+  cb.setStreamingText("");
+  cb.setIsStreaming(false);
+
+  cb.addLine("info", "");
+  cb.addLine("done", formatDoneStats({
+    usage: { promptTokens: 24, completionTokens: words.filter((w) => w.trim()).length, totalTokens: 24 + words.filter((w) => w.trim()).length },
+  }));
+  cb.addLine("info", "--- stream ends ---");
 }

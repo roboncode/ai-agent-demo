@@ -162,6 +162,16 @@ data: {"usage": {"totalTokens": 142}}`,
           },
         },
       },
+      {
+        label: "Simulate streaming (offline)",
+        demo: {
+          type: "simulate-stream",
+          systemPrompt: "You are a creative poet.",
+          userPrompt: "Write a short poem about AI agents working together.",
+          text: "In circuits deep where data streams align,\na constellation forms — not yours, not mine.\nOne agent reads the question, sets the stage,\nanother writes its answer, page by page.\n\nA third reviews, a fourth refines the tone,\nno single mind, yet none of them alone.\nThey pass the thread like weavers at a loom,\nand what emerges lights the darkest room.\n\nNot magic — math. Not souls — but structured thought.\nA chorus built from everything we taught.",
+          delayMs: 55,
+        },
+      },
     ],
   },
 
