@@ -1,8 +1,7 @@
 import type { Context } from "hono";
-import { streamSSE } from "hono/streaming";
 import { generateText, generateObject, streamText, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { streamAgentResponse } from "../../lib/stream-helpers.js";
+import { streamAgentResponse, streamSSEWithPadding } from "../../lib/stream-helpers.js";
 import { getModel, extractUsage, mergeUsage, type UsageInfo } from "../../lib/ai-provider.js";
 import { WEATHER_AGENT_CONFIG } from "../../agents/weather-agent.js";
 import { HACKERNEWS_AGENT_CONFIG } from "../../agents/hackernews-agent.js";
@@ -106,7 +105,7 @@ export async function handleHumanInLoopAgentStream(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   const convId = conversationId(cid);
 
-  return streamSSE(c, async (stream) => {
+  return streamSSEWithPadding(c, async (stream) => {
     let id = 0;
 
     await stream.writeSSE({
@@ -172,7 +171,7 @@ export async function handleGuardrailsAgentStream(c: Context) {
   const aiModel = getModel(model);
   const { classificationSchema, classificationPrompt, advicePrompt } = GUARDRAILS_CONFIG;
 
-  return streamSSE(c, async (stream) => {
+  return streamSSEWithPadding(c, async (stream) => {
     let id = 0;
 
     // Phase 1: Classification
@@ -284,7 +283,7 @@ export async function handleTaskAgent(c: Context) {
   const convId = conversationId(cid);
   const overallStart = performance.now();
 
-  return streamSSE(c, async (stream) => {
+  return streamSSEWithPadding(c, async (stream) => {
     let id = 0;
 
     // Phase 1: Planning (non-streaming)

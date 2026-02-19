@@ -16,3 +16,65 @@ Coding agent based on custom code
 For now let's not use a database, we will just get things working using services.
 
 If you have any further thoughts about this or questions, let me know. 
+
+
+Context
+Max tokens
+Compacting
+
+// no example of workflow
+An agent is one step. A workflow chains agents with logic.
+Combine: guardrails, routing, parallel work, structured output, human review
+// Workflow composition:
+input
+  → guardrail (classify)
+  → supervisor (route)
+  → parallel: [weather, news, movies]
+  → synthesize (structured output)
+  → human review (approve/reject)
+  → execute
+
+
+
+---------
+
+
+Models (when to use what?)
+  Cost
+  Latency
+  Throughput
+  Modalities
+  Quantized
+  Stream
+  Support Tools
+  Prompt Training
+  Thinking
+  Usage
+  Benchmarking
+  Comparison
+  
+Tools
+Observability
+Cost
+Thinking
+Human in the loop
+generate vs streaming SSE
+Workflows
+MCP Client / Server
+Supervisor Agent
+Why a custom agent
+What is the difference between an Agent and talking to an LLM (model)
+Security
+Prompts
+Knowledge Base
+  Where does an agent get its knowlege?
+    - Files
+    - Database
+      - Vector searching vs SQL
+    - External APIs
+Memory
+Context
+Message formats
+Sandboxes
+Guardrails
+Structure (JSON, TOON, YAML, XML, CSV)

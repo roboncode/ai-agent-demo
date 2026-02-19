@@ -1,7 +1,27 @@
-import { streamSSE } from "hono/streaming";
+import { streamSSE, type SSEStreamingApi } from "hono/streaming";
 import type { Context } from "hono";
 import { streamText, stepCountIs } from "ai";
 import { getModel } from "./ai-provider.js";
+
+// ~4KB of SSE comments to fill proxy/VPN buffers and force forwarding
+const PROXY_PADDING = ": proxy-buffer-padding\n".repeat(180) + "\n";
+
+/**
+ * Wrapper around Hono's streamSSE that adds anti-buffering headers and
+ * padding for corporate proxies/VPNs.
+ */
+export function streamSSEWithPadding(
+  c: Context,
+  cb: (stream: SSEStreamingApi) => Promise<void>,
+) {
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+
+  return streamSSE(c, async (stream) => {
+    await stream.write(PROXY_PADDING);
+    await cb(stream);
+  });
+}
 
 interface AgentStreamConfig {
   system: string;
@@ -23,11 +43,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
     stopWhen: stepCountIs(config.maxSteps ?? 5),
   });
 
-  // Prevent proxy/VPN buffering of SSE
-  c.header("X-Accel-Buffering", "no");
-  c.header("Cache-Control", "no-cache, no-transform");
-
-  return streamSSE(c, async (stream) => {
+  return streamSSEWithPadding(c, async (stream) => {
     let id = 0;
     const toolsUsed = new Set<string>();
 

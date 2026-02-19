@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { streamSSE } from "hono/streaming";
+import { streamSSEWithPadding } from "../../lib/stream-helpers.js";
 import { generateText, streamText, stepCountIs } from "ai";
 import { getModel, extractUsage } from "../../lib/ai-provider.js";
 import { allTools, type ToolName } from "../../tools/index.js";
@@ -56,7 +56,7 @@ export async function handleGenerateStream(c: Context) {
     stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
-  return streamSSE(c, async (stream) => {
+  return streamSSEWithPadding(c, async (stream) => {
     let id = 0;
 
     for await (const text of result.textStream) {
