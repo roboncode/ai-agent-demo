@@ -82,6 +82,8 @@ export interface SlideConfig {
   category: string;
   section: string;
   bullets: string[];
+  /** Render as a section intro chapter-break slide */
+  layout?: "section-intro";
   demoHint?: string;
   /** Multiple labelled demo buttons — rendered instead of the single demoHint button */
   demoButtons?: Array<{ label: string; demo: DemoConfig }>;

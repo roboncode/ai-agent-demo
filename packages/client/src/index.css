@@ -194,6 +194,15 @@
   color: var(--badge-text);
 }
 
+/* Introduction — white/silver */
+.badge-intro {
+  --badge-text:   #94a3b8;
+  --badge-bg-hi:  rgba(148, 163, 184, 0.15);
+  --badge-bg-lo:  rgba(148, 163, 184, 0.05);
+  --badge-border: rgba(148, 163, 184, 0.30);
+  --badge-glow:   rgba(148, 163, 184, 0.10);
+}
+
 /* I. Foundations — teal */
 .badge-i {
   --badge-text:   #34d8cc;
@@ -237,6 +246,15 @@
   --badge-bg-lo:  rgba(251, 113, 133, 0.05);
   --badge-border: rgba(251, 113, 133, 0.30);
   --badge-glow:   rgba(251, 113, 133, 0.10);
+}
+
+/* Conclusion — emerald */
+.badge-conclusion {
+  --badge-text:   #34d399;
+  --badge-bg-hi:  rgba(52, 211, 153, 0.15);
+  --badge-bg-lo:  rgba(52, 211, 153, 0.05);
+  --badge-border: rgba(52, 211, 153, 0.30);
+  --badge-glow:   rgba(52, 211, 153, 0.10);
 }
 
 /* ─── Top bar ─────────────────────────────────────────────────── */
