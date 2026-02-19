@@ -295,7 +295,7 @@ const ConclusionContent: Component<{ slide: SlideConfig }> = (props) => {
             }}
           >
             <For each={props.slide.bullets}>
-              {(takeaway, i) => (
+              {(takeaway) => (
                 <div class="flex items-start gap-5">
                   <span
                     class="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full font-mono text-[11px] font-bold"
