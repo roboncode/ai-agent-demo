@@ -3,6 +3,7 @@ import { Dynamic } from "solid-js/web";
 import type { SlideConfig, DemoConfig } from "../types";
 import { badgeClass } from "../lib/section-colors";
 import CodeBlock from "./CodeBlock";
+import { FiChevronRight } from "solid-icons/fi";
 
 interface Props {
   slide: SlideConfig;
@@ -80,7 +81,9 @@ const SlideContent: Component<Props> = (props) => {
                   }`}
                 >
                   <Show when={!props.fullWidth}>
-                    <span class="mt-[11px] h-2 w-2 flex-shrink-0 rounded-full bg-accent shadow-[0_0_6px_rgba(52,216,204,0.4)]" />
+                    <span class="mt-[5px] flex-shrink-0 text-accent" style={{"filter": "drop-shadow(0 0 4px rgba(52,216,204,0.5))"}}>
+                      <FiChevronRight size={20} />
+                    </span>
                   </Show>
                   <span>{bullet}</span>
                 </li>
