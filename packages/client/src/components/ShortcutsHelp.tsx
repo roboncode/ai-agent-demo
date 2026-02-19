@@ -11,7 +11,6 @@ const mod = isMac ? "⌘" : "Ctrl";
 const shortcuts: { keys: string[]; label: string }[] = [
   { keys: ["←", "→"],          label: "Navigate slides" },
   { keys: ["Space"],            label: "Next slide" },
-  { keys: ["Enter"],            label: "Run demo" },
   { keys: [mod, "Shift", "K"], label: "Clear terminal" },
   { keys: ["?"],                label: "Show shortcuts" },
   { keys: ["Esc"],              label: "Close this panel" },

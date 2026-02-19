@@ -1,4 +1,5 @@
 import type { Component } from "solid-js";
+import { FiPlus } from "solid-icons/fi";
 
 // Colors intentionally mirror the terminal line types:
 // system-prompt → text-ansi-magenta (#c084fc)
@@ -64,10 +65,8 @@ const PromptsVisual: Component = () => {
       </div>
 
       {/* ── Connector ─────────────────────────────────────────── */}
-      <div class="flex flex-col items-center justify-center gap-1.5 px-1">
-        <div class="h-px w-4 bg-border" />
-        <span class="font-mono text-[13px] text-muted">+</span>
-        <div class="h-px w-4 bg-border" />
+      <div class="flex flex-shrink-0 items-center justify-center px-2">
+        <FiPlus size={36} class="text-secondary" />
       </div>
 
       {/* ── User Prompt ───────────────────────────────────────── */}

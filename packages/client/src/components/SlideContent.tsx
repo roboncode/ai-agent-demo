@@ -1,12 +1,14 @@
 import { type Component, For, Show, createComponent } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import type { SlideConfig } from "../types";
+import type { SlideConfig, DemoConfig } from "../types";
 import { badgeClass } from "../lib/section-colors";
 import CodeBlock from "./CodeBlock";
 
 interface Props {
   slide: SlideConfig;
   fullWidth: boolean;
+  onRun?: (demo?: DemoConfig) => void;
+  isRunning?: boolean;
 }
 
 const SlideContent: Component<Props> = (props) => {
@@ -57,7 +59,7 @@ const SlideContent: Component<Props> = (props) => {
         {/* Subtitle */}
         <Show when={props.slide.subtitle}>
           <p
-            class={`mb-10 font-body text-[1.1rem] italic text-muted ${
+            class={`mb-10 font-body text-[1.1rem] italic text-secondary ${
               props.fullWidth ? "" : ""
             }`}
           >
@@ -92,23 +94,48 @@ const SlideContent: Component<Props> = (props) => {
           {createComponent(props.slide.visual!, {})}
         </Show>
 
-        {/* Code snippet — only if no demo and no custom visual */}
-        <Show when={props.slide.code && !props.slide.demo && !props.slide.visual}>
+        {/* Code snippet — only if no custom visual */}
+        <Show when={props.slide.code && !props.slide.visual}>
+          <Show when={props.slide.codeLabel}>
+            <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
+              {props.slide.codeLabel}
+            </p>
+          </Show>
           <CodeBlock code={props.slide.code!} />
         </Show>
 
-        {/* Demo hint — only if has demo */}
-        <Show when={props.slide.demoHint && props.slide.demo}>
-          <div
-            class={`demo-hint mt-2 inline-flex items-center gap-3 rounded-xl px-5 py-3 ${
-              props.fullWidth ? "" : ""
-            }`}
-          >
-            <span class="text-lg text-accent">&#9654;</span>
-            <span class="font-body text-sm text-accent-dim">
-              Watch: {props.slide.demoHint}
-            </span>
+        {/* Multiple demo buttons */}
+        <Show when={props.slide.demoButtons?.length}>
+          <div class={`mt-8 flex flex-col gap-3 ${props.fullWidth ? "items-center" : ""}`}>
+            <For each={props.slide.demoButtons}>
+              {(btn) => (
+                <button
+                  onClick={() => props.onRun?.(btn.demo)}
+                  disabled={props.isRunning}
+                  class="demo-hint btn-glow inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span class="text-accent">&#9654;</span>
+                  <span class="font-body text-sm text-accent-dim">{btn.label}</span>
+                </button>
+              )}
+            </For>
           </div>
+        </Show>
+
+        {/* Single demo hint button — hidden when demoButtons is used */}
+        <Show when={props.slide.demoHint && props.slide.demo && !props.slide.demoButtons?.length}>
+          <button
+            onClick={() => props.onRun?.()}
+            disabled={props.isRunning}
+            class="demo-hint btn-glow mt-8 inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span class="text-lg text-accent">
+              {props.isRunning ? <span class="spinner inline-block" /> : <>&#9654;</>}
+            </span>
+            <span class="font-body text-sm text-accent-dim">
+              {props.isRunning ? "Running..." : `Watch: ${props.slide.demoHint}`}
+            </span>
+          </button>
         </Show>
       </div>
     </div>

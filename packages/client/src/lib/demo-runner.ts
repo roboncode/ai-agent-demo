@@ -85,8 +85,15 @@ async function runJsonDemo(
     cb.addLine("info", `POST ${demo.endpoint}`);
     cb.addLine("info", "");
 
-    const result = await postJson(demo.endpoint, demo.body);
-    cb.addLine("success", JSON.stringify(result, null, 2));
+    const result = await postJson<Record<string, any>>(demo.endpoint, demo.body);
+
+    if (demo.displayAs === "text" && typeof result.text === "string") {
+      cb.addLine("text", result.text);
+      cb.addLine("info", "");
+      cb.addLine("done", formatDoneStats({ usage: result.usage }));
+    } else {
+      cb.addLine("success", JSON.stringify(result, null, 2));
+    }
   }
 }
 

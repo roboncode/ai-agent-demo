@@ -1,5 +1,9 @@
 import type { SlideConfig } from "../types";
 import PromptsVisual from "../components/PromptsVisual";
+import Slide14Visual from "../components/Slide14Visual";
+import Slide17Visual from "../components/Slide17Visual";
+import Slide18Visual from "../components/Slide18Visual";
+import Slide19Visual from "../components/Slide19Visual";
 import {
   FiCpu,
   FiMessageSquare,
@@ -35,6 +39,11 @@ export const slides: SlideConfig[] = [
       "A prediction engine: you send text, it guesses what comes next",
       "No memory, no tools, no decisions — just one API call",
     ],
+    code: `POST /api/generate
+{
+  "prompt": "Explain what an AI agent is in 2-3 sentences.",
+  "systemPrompt": "You are a concise technical explainer."
+}`,
     demoHint: "We send a question and watch the response stream in token by token",
     demo: {
       type: "sse",
@@ -71,7 +80,15 @@ export const slides: SlideConfig[] = [
       "Without streaming: wait... wait... wall of text",
       "With streaming: words appear as the AI thinks them",
     ],
-    demoHint: "Words flow in one at a time instead of all at once",
+    codeLabel: "Example streaming response",
+    code: `event: text-delta
+data: {"text": "AI "}
+
+event: text-delta
+data: {"text": "agents "}
+
+event: done
+data: {"usage": {"totalTokens": 142}}`,
     demo: {
       type: "sse",
       endpoint: "/api/generate/stream",
@@ -81,6 +98,33 @@ export const slides: SlideConfig[] = [
         systemPrompt: "You are a creative poet.",
       },
     },
+    demoButtons: [
+      {
+        label: "Without streaming — full response at once",
+        demo: {
+          type: "json",
+          endpoint: "/api/generate",
+          displayAs: "text",
+          systemPrompt: "You are a creative poet.",
+          body: {
+            prompt: "Write a short poem about AI agents working together.",
+            systemPrompt: "You are a creative poet.",
+          },
+        },
+      },
+      {
+        label: "With streaming — token by token",
+        demo: {
+          type: "sse",
+          endpoint: "/api/generate/stream",
+          systemPrompt: "You are a creative poet.",
+          body: {
+            prompt: "Write a short poem about AI agents working together.",
+            systemPrompt: "You are a creative poet.",
+          },
+        },
+      },
+    ],
   },
 
   // ─── SECTION II: FROM LLM TO AGENT ────────────────────────────────────
@@ -95,17 +139,48 @@ export const slides: SlideConfig[] = [
       "An LLM answers questions. An agent takes actions.",
       "The secret ingredient: tools the AI can call on its own",
     ],
-    demoHint: "The AI decides it needs weather data and fetches it autonomously",
+    code: `// LLM: one call, one answer, no tools
+POST /api/generate
+{ "prompt": "What's the weather in SF?" }
+
+// Agent: observe → tool call → act → respond
+POST /api/agents/weather
+{ "message": "What's the weather in SF?" }`,
     demo: {
-      type: "json",
-      endpoint: "/api/generate",
-      systemPrompt: "(default — none specified)",
+      type: "sse",
+      endpoint: "/api/agents/weather",
+      systemPrompt:
+        "You are a weather specialist agent. Your job is to provide accurate, helpful weather information.\n\nWhen asked about weather:\n1. Use the getWeather tool to fetch current conditions\n2. Present the data in a clear, conversational format\n3. Include temperature, conditions, humidity, and wind info\n4. Offer practical advice based on conditions\n\nAlways use the tool to get real data rather than guessing.",
       body: {
-        prompt: "What is the weather like in San Francisco right now?",
-        tools: ["getWeather"],
-        maxSteps: 3,
+        message: "What is the weather like in San Francisco right now?",
       },
     },
+    demoButtons: [
+      {
+        label: "Ask the LLM — no tools, no real data",
+        demo: {
+          type: "sse",
+          endpoint: "/api/generate/stream",
+          systemPrompt: "You are a helpful assistant.",
+          body: {
+            prompt: "What is the weather like in San Francisco right now?",
+            systemPrompt: "You are a helpful assistant.",
+          },
+        },
+      },
+      {
+        label: "Ask the agent — observes, calls a tool, acts",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/weather",
+          systemPrompt:
+            "You are a weather specialist agent. Your job is to provide accurate, helpful weather information.\n\nWhen asked about weather:\n1. Use the getWeather tool to fetch current conditions\n2. Present the data in a clear, conversational format\n3. Include temperature, conditions, humidity, and wind info\n4. Offer practical advice based on conditions\n\nAlways use the tool to get real data rather than guessing.",
+          body: {
+            message: "What is the weather like in San Francisco right now?",
+          },
+        },
+      },
+    ],
   },
 
   {
@@ -119,6 +194,17 @@ export const slides: SlideConfig[] = [
       "A tool is just a function: a name, a description, and input rules",
       "Here we call one directly — no AI involved yet",
     ],
+    code: `// A tool: name + description + input + execute
+{
+  name: "getWeather",
+  description: "Get current weather for a city",
+  input: { location: "string" },
+  execute: ({ location }) => fetchWeather(location)
+}
+
+// Direct call — no AI needed:
+POST /api/tools/weather
+{ "location": "San Francisco" }`,
     demoHint: "We call a weather tool directly — plain function, plain data",
     demo: {
       type: "json",
@@ -140,6 +226,17 @@ export const slides: SlideConfig[] = [
       "The agent sees a question, picks the right tool, uses the result",
       "Observe, think, act, repeat",
     ],
+    code: `// Give the agent a tool and let it decide when to use it:
+const weatherAgent = {
+  system: "You are a weather specialist.",
+  tools: [getWeather]
+}
+
+agent.run("Compare Tokyo and New York weather")
+// → thinks: "I need weather data for two cities"
+// → calls getWeather({ location: "Tokyo" })
+// → calls getWeather({ location: "New York" })
+// → synthesizes and responds`,
     demoHint: "The agent compares weather in two cities — calling the tool twice",
     demo: {
       type: "sse",
@@ -164,6 +261,15 @@ export const slides: SlideConfig[] = [
       "LLMs have a training cutoff — they can't know recent or private data",
       "Knowledge tools let agents search external sources on the fly",
     ],
+    code: `const knowledgeAgent = {
+  system: "You are a movie knowledge agent.",
+  tools: [searchMovies, getMovieDetail]
+}
+
+agent.run("Who played the lead in Interstellar?")
+// → calls searchMovies({ query: "Interstellar" })
+// → calls getMovieDetail({ id: 157336 })
+// → answers with real data from the database`,
     demoHint: "The agent searches a movie database to answer a question",
     demo: {
       type: "sse",
@@ -189,6 +295,14 @@ export const slides: SlideConfig[] = [
       "You define the shape — the AI fills it in",
       "Guaranteed valid JSON, not freeform text you have to parse",
     ],
+    code: `// You define the shape:
+{
+  name: "string",
+  ingredients: [{ name: "string", amount: "string" }],
+  steps: [{ step: "number", instruction: "string" }]
+}
+
+// The AI is forced to return exactly this — every time.`,
     demoHint: "We ask for a recipe and get back structured JSON",
     demo: {
       type: "json",
@@ -212,6 +326,20 @@ export const slides: SlideConfig[] = [
       "LLMs are stateless: they forget everything between calls",
       "Memory tools save and recall facts across conversations",
     ],
+    code: `const memoryAgent = {
+  system: "You are a memory-enabled agent.",
+  tools: [saveMemory, recallMemory]
+}
+
+// Conversation 1:
+agent.run("My name is Alex, I prefer TypeScript.")
+// → calls saveMemory({ key: "name", value: "Alex" })
+// → calls saveMemory({ key: "language", value: "TypeScript" })
+
+// Conversation 2 (new session, fresh LLM):
+agent.run("What's my favourite language?")
+// → calls recallMemory({ key: "language" })
+// → "Your favourite language is TypeScript."`,
     demoHint: "Step 1 saves facts. Step 2 recalls them — proving persistence",
     demo: {
       type: "sse",
@@ -236,6 +364,14 @@ export const slides: SlideConfig[] = [
       "Problem: Users can ask anything. Your agent should only handle its domain.",
       "Solution: A fast classifier checks before the expensive agent runs",
     ],
+    code: `// Phase 1: classify (fast + cheap)
+const { allowed } = classify(userMessage);
+
+// Phase 2: only run if allowed
+if (!allowed) return { blocked: true };
+
+// Phase 3: generate (slow + expensive)
+const response = await agent.run(userMessage);`,
     demoHint: "A finance question gets through. A cake recipe gets blocked.",
     demo: {
       type: "sse",
@@ -273,6 +409,17 @@ export const slides: SlideConfig[] = [
       "Some actions are too risky for full autonomy",
       "The agent proposes, a human approves or rejects, then it executes",
     ],
+    code: `// Step 1: agent proposes an action
+const proposal = await agent.propose(
+  "Send an email to john@example.com"
+)
+// → { action: "sendEmail", params: { to: "john@...", ... } }
+
+// Step 2: human decides
+const decision = await waitForHuman(proposal)
+
+// Step 3: execute only if approved
+if (decision.approved) await execute(proposal)`,
     demoHint: "The agent proposes sending an email — you decide if it happens",
     demo: {
       type: "multi-step",
@@ -300,6 +447,16 @@ export const slides: SlideConfig[] = [
       "A supervisor reads your question and picks the right specialist",
       "Each specialist has its own tools and deep expertise",
     ],
+    code: `const supervisorAgent = {
+  system: "Route queries to the right specialist.",
+  tools: [routeToAgent],
+  agents: { weather: weatherAgent, news: newsAgent }
+}
+
+agent.run("Weather in London and top news today?")
+// → calls routeToAgent({ agent: "weather", query: "..." })
+// → calls routeToAgent({ agent: "news",    query: "..." })
+// → synthesizes both results into one response`,
     demoHint: "A question about weather AND news gets routed to two agents",
     demo: {
       type: "sse",
@@ -324,6 +481,15 @@ export const slides: SlideConfig[] = [
       "Break a complex question into sub-tasks, run them all at once",
       "Three agents in parallel vs one at a time — much faster",
     ],
+    code: `// Fan out to three agents simultaneously:
+const [weather, news, movie] = await Promise.all([
+  weatherAgent.run("Weather in Paris?"),
+  newsAgent.run("Top Hacker News story?"),
+  movieAgent.run("Best sci-fi recommendation?")
+])
+
+// Sequential would take 3× as long.
+// Parallel takes the time of the slowest one.`,
     demoHint: "Weather, news, and movies fetched simultaneously",
     demo: {
       type: "sse",
@@ -348,6 +514,7 @@ export const slides: SlideConfig[] = [
       "ChatGPT is a generalist. Your agent is purpose-built for your problem.",
       "You control: which model, which tools, what data, what guardrails",
     ],
+    visual: Slide14Visual,
   },
 
   // ─── SECTION V: PRODUCTION CONCERNS ───────────────────────────────────
@@ -362,6 +529,13 @@ export const slides: SlideConfig[] = [
       "Every request must prove who it is before the agent responds",
       "Never expose your AI provider keys to the client",
     ],
+    code: `// Every request requires a valid key in the header:
+POST /api/agents/weather
+Headers: { "X-API-Key": "your-secret-key" }
+
+// No key   → 401 Unauthorized
+// Wrong key → 401 Unauthorized
+// Valid key → request proceeds`,
     demoHint: "Three attempts: no key, wrong key, correct key",
     demo: {
       type: "json",
@@ -398,6 +572,16 @@ export const slides: SlideConfig[] = [
       "When an agent writes code, you need a safe place to run it",
       "Sandboxes: isolated execution, no file system or network access",
     ],
+    code: `const codingAgent = {
+  system: "Write and execute JavaScript to solve problems.",
+  tools: [executeCode]
+}
+
+agent.run("Find the first 15 Fibonacci primes")
+// → writes JavaScript to compute the sequence
+// → calls executeCode({ code: "..." })
+//     runs in isolated VM — no fs, no network
+// → reports the output and explains the result`,
     demoHint: "The agent writes code, runs it in a sandbox, reports results",
     demo: {
       type: "sse",
@@ -420,18 +604,9 @@ export const slides: SlideConfig[] = [
     section: "V. Production Concerns",
     bullets: [
       "Every call has a cost: track tokens, latency, and dollars",
-      "Multi-step agents multiply costs — a supervisor + 3 agents = 4+ calls",
+      "Multi-step agents multiply costs",
     ],
-    code: `// Usage stats from every response:
-{
-  "usage": {
-    "inputTokens": 847,
-    "outputTokens": 231,
-    "totalTokens": 1078,
-    "cost": 0.000266,
-    "durationMs": 2340
-  }
-}`,
+    visual: Slide17Visual,
   },
 
   {
@@ -445,14 +620,7 @@ export const slides: SlideConfig[] = [
       "A standard for AI to discover and use tools — no hardcoding",
       "Any MCP-compatible tool works with any MCP-compatible agent",
     ],
-    code: `// MCP tool discovery:
-const tools = await mcp.listTools();
-// → [{ name: "search", ... },
-//    { name: "calendar", ... }]
-
-const result = await mcp.callTool("search", {
-  query: "quarterly revenue"
-});`,
+    visual: Slide18Visual,
   },
 
   {
@@ -464,15 +632,7 @@ const result = await mcp.callTool("search", {
     section: "V. Production Concerns",
     bullets: [
       "An agent is one step. A workflow chains agents with logic.",
-      "Combine: guardrails, routing, parallel work, structured output, human review",
     ],
-    code: `// Workflow composition:
-input
-  → guardrail (classify)
-  → supervisor (route)
-  → parallel: [weather, news, movies]
-  → synthesize (structured output)
-  → human review (approve/reject)
-  → execute`,
+    visual: Slide19Visual,
   },
 ];

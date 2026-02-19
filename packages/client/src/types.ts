@@ -28,6 +28,8 @@ export interface JsonDemoConfig {
   method?: "GET" | "POST";
   body: Record<string, unknown>;
   systemPrompt?: string;
+  /** Render the response `text` field as formatted text instead of raw JSON */
+  displayAs?: "text";
   /** Steps for multi-request JSON demos (e.g. auth with 3 attempts) */
   steps?: Array<{
     label: string;
@@ -74,6 +76,10 @@ export interface SlideConfig {
   section: string;
   bullets: string[];
   demoHint?: string;
+  /** Multiple labelled demo buttons — rendered instead of the single demoHint button */
+  demoButtons?: Array<{ label: string; demo: DemoConfig }>;
+  /** Optional label shown above the code block */
+  codeLabel?: string;
   /** Optional code snippet to display */
   code?: string;
   /** Optional demo configuration - slides without this hide the terminal */

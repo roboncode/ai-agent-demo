@@ -1,18 +1,22 @@
 import { createSignal, onMount, onCleanup, createMemo, Show } from "solid-js";
-import type { TerminalLine } from "./types";
+import type { TerminalLine, DemoConfig } from "./types";
 import { slides } from "./data/slides";
 import SlideShell from "./components/SlideShell";
 import SlideContent from "./components/SlideContent";
 import SlideNav from "./components/SlideNav";
 import Terminal from "./components/Terminal";
-import RunButton from "./components/RunButton";
 import ApprovalButtons from "./components/ApprovalButtons";
 import ShortcutsHelp from "./components/ShortcutsHelp";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
 
 function App() {
-  const [slideIndex, setSlideIndex] = createSignal(0);
+  const initialSlide = () => {
+    const param = new URLSearchParams(window.location.search).get("s");
+    const n = parseInt(param ?? "1", 10);
+    return isNaN(n) ? 0 : Math.min(Math.max(n - 1, 0), slides.length - 1);
+  };
+  const [slideIndex, setSlideIndex] = createSignal(initialSlide());
   const [showShortcuts, setShowShortcuts] = createSignal(false);
   // Per-slide terminal output: keyed by slide index
   const [slideLines, setSlideLines] = createSignal<Record<number, TerminalLine[]>>({});
@@ -51,6 +55,7 @@ function App() {
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
       setSlideIndex(index);
+      history.replaceState(null, "", `?s=${index + 1}`);
       // Stop any in-flight run; preserve per-slide output
       setIsRunning(false);
       setIsStreaming(false);
@@ -59,15 +64,15 @@ function App() {
     }
   }
 
-  async function handleRun() {
-    const demo = currentSlide().demo;
-    if (!demo || isRunning()) return;
+  async function handleRun(demo?: DemoConfig) {
+    const activeDemo = demo ?? currentSlide().demo;
+    if (!activeDemo || isRunning()) return;
 
     // Always clear this slide's previous output before a fresh run
     clearTerminal();
     setIsRunning(true);
 
-    await runDemo(demo, {
+    await runDemo(activeDemo, {
       addLine,
       setStreamingText,
       setIsStreaming,
@@ -97,9 +102,6 @@ function App() {
     } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       navigate(slideIndex() - 1);
-    } else if (e.key === "Enter" && hasDemo() && !awaitingApproval()) {
-      e.preventDefault();
-      handleRun();
     } else if (e.key === "k" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault();
       clearTerminal();
@@ -119,24 +121,10 @@ function App() {
   });
 
   const terminalFooter = () => {
-    const demo = currentSlide().demo;
-    if (!demo) return null;
-
+    if (!awaitingApproval()) return null;
     return (
       <div class="flex items-center gap-2">
-        <Show
-          when={awaitingApproval()}
-          fallback={
-            <RunButton
-              onRun={handleRun}
-              onClear={clearTerminal}
-              isRunning={isRunning()}
-              hasOutput={lines().length > 0 || !!streamingText()}
-            />
-          }
-        >
-          <ApprovalButtons onApprove={handleApproval} />
-        </Show>
+        <ApprovalButtons onApprove={handleApproval} />
       </div>
     );
   };
@@ -164,6 +152,8 @@ function App() {
             <SlideContent
               slide={currentSlide()}
               fullWidth={!hasDemo()}
+              onRun={handleRun}
+              isRunning={isRunning()}
             />
           }
           terminal={
