@@ -364,7 +364,7 @@ async function runSimulateStreamDemo(
 
   cb.addLine("info", "");
   cb.addLine("done", formatDoneStats({
-    usage: { promptTokens: 24, completionTokens: words.filter((w) => w.trim()).length, totalTokens: 24 + words.filter((w) => w.trim()).length },
+    usage: { inputTokens: 24, outputTokens: words.filter((w) => w.trim()).length, totalTokens: 24 + words.filter((w) => w.trim()).length },
   }));
   cb.addLine("info", "--- stream ends ---");
 }
