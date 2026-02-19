@@ -23,6 +23,10 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
     stopWhen: stepCountIs(config.maxSteps ?? 5),
   });
 
+  // Prevent proxy/VPN buffering of SSE
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+
   return streamSSE(c, async (stream) => {
     let id = 0;
     const toolsUsed = new Set<string>();
