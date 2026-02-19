@@ -19,6 +19,7 @@ import { runHackernewsAgent } from "../../agents/hackernews-agent.js";
 import { runKnowledgeAgent } from "../../agents/knowledge-agent.js";
 import { runRecipeAgent } from "../../agents/recipe-agent.js";
 import { runGuardrailsAgent, GUARDRAILS_CONFIG } from "../../agents/guardrails-agent.js";
+import { COMPACT_AGENT_CONFIG } from "../../agents/compact-agent.js";
 
 function conversationId(existing?: string) {
   return existing ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -80,6 +81,18 @@ export async function handleCodingAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   return streamAgentResponse(c, {
     ...CODING_AGENT_CONFIG,
+    prompt: message,
+    model,
+    conversationId: conversationId(cid),
+  });
+}
+
+// --- Compact agent (no tools, pure text) ---
+
+export async function handleCompactAgent(c: Context) {
+  const { message, conversationId: cid, model } = await c.req.json();
+  return streamAgentResponse(c, {
+    ...COMPACT_AGENT_CONFIG,
     prompt: message,
     model,
     conversationId: conversationId(cid),

@@ -199,6 +199,21 @@ router.openapi(
   handlers.handleTaskAgent
 );
 
+// Compact agent (conversation compaction)
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/compact",
+    tags: ["Agents"],
+    summary: "Conversation compaction agent",
+    description:
+      "Compresses a verbose conversation into a concise summary preserving key facts and context",
+    request: { body: agentBody },
+    responses: sseResponse,
+  }),
+  handlers.handleCompactAgent
+);
+
 // Coding agent
 router.openapi(
   createRoute({

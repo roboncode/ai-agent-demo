@@ -3,6 +3,8 @@ import PromptsVisual from "../components/PromptsVisual";
 import KnowledgeSourcesVisual from "../components/KnowledgeSourcesVisual";
 import GeneralistVsCustomVisual from "../components/GeneralistVsCustomVisual";
 import ObservabilityCostVisual from "../components/ObservabilityCostVisual";
+import ChoosingModelVisual from "../components/ChoosingModelVisual";
+import ContextIntelligenceVisual from "../components/ContextIntelligenceVisual";
 import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
 import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
 import {
@@ -23,6 +25,8 @@ import {
   FiLock,
   FiBox,
   FiActivity,
+  FiSliders,
+  FiTrendingDown,
   FiLink,
   FiGitMerge,
 } from "solid-icons/fi";
@@ -366,6 +370,57 @@ agent.run("What's my favourite language?")
   },
 
   {
+    id: 20,
+    title: "Context & Token Intelligence",
+    subtitle: "More tokens in, less intelligence out",
+    icon: FiTrendingDown,
+    category: "Agent Patterns",
+    section: "III. Agent Patterns",
+    bullets: [
+      "LLMs lose accuracy as the context window fills — attention dilutes over long conversations",
+      "Compaction strategies keep your agent sharp by trimming what doesn't matter",
+    ],
+    visual: ContextIntelligenceVisual,
+    demoHint: "A verbose 4-turn conversation gets compacted into a tight summary",
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/compact",
+      systemPrompt:
+        "You are a conversation compaction agent. Compress verbose conversations into concise summaries preserving all key facts.",
+      body: {
+        message:
+          "Compact the following conversation into the shortest possible summary that preserves all key information:\n\n---\n\n" +
+          "User: What's the weather like in San Francisco today?\n\n" +
+          "Assistant: I checked the weather in San Francisco for you. Currently, it's 62°F (17°C) with partly cloudy skies. " +
+          "The humidity is at 68% and winds are coming from the west at about 12 mph. It's a fairly typical day for San Francisco. " +
+          "You might want to bring a light jacket as it could get cooler in the evening, especially near the waterfront. " +
+          "The forecast shows it should stay dry throughout the day with temperatures reaching a high of 65°F.\n\n" +
+          "User: What about New York?\n\n" +
+          "Assistant: I looked up the weather in New York City for you. Right now it's 78°F (26°C) and mostly sunny. " +
+          "The humidity is a bit higher at 72%, and there's a light breeze from the southeast at 8 mph. It's a warm summer day there. " +
+          "The forecast indicates temperatures could reach up to 82°F later this afternoon. There's a 20% chance of isolated " +
+          "thunderstorms in the evening, so you might want to keep an umbrella handy if you're planning to be out late.\n\n" +
+          "User: Compare them for me\n\n" +
+          "Assistant: Here's a comparison of the weather in both cities. San Francisco is significantly cooler at 62°F compared " +
+          "to New York's 78°F — that's a 16-degree difference. San Francisco has its typical partly cloudy marine layer while " +
+          "New York is enjoying mostly sunny skies. Humidity is similar in both cities (68% vs 72%). Wind is stronger in " +
+          "San Francisco at 12 mph from the west, while New York has gentler 8 mph winds from the southeast. San Francisco " +
+          "should stay dry while New York has a slight chance of evening thunderstorms. If you're choosing between the two, " +
+          "New York is better for outdoor activities today, though San Francisco's cooler weather might be more comfortable " +
+          "if you prefer mild temperatures.\n\n" +
+          "User: Which city should I visit this weekend?\n\n" +
+          "Assistant: That's a great question! Based on today's weather alone, it depends on what you prefer. If you enjoy warm, " +
+          "sunny weather perfect for outdoor activities like visiting Central Park, walking the Brooklyn Bridge, or dining at " +
+          "rooftop restaurants, New York at 78°F is calling your name. Just watch out for those potential evening storms. On " +
+          "the other hand, if you prefer cooler, more temperate weather, San Francisco at 62°F is ideal for comfortable walking " +
+          "around neighborhoods like the Mission District, visiting Fisherman's Wharf, or exploring Golden Gate Park without " +
+          "breaking a sweat. The mild temperatures make it great for hiking and exploring on foot. Of course, weather is just " +
+          "one factor — both cities have amazing food, culture, and attractions regardless of the forecast!",
+      },
+    },
+  },
+
+  {
     id: 10,
     title: "Guardrails",
     subtitle: "A bouncer at the door",
@@ -619,6 +674,19 @@ agent.run("Find the first 15 Fibonacci primes")
       "Multi-step agents multiply costs",
     ],
     visual: ObservabilityCostVisual,
+  },
+
+  {
+    id: 21,
+    title: "Choosing the Right Model",
+    subtitle: "Not all models are created equal",
+    icon: FiSliders,
+    category: "Production",
+    section: "V. Production Concerns",
+    bullets: [
+      "There's no single best model — the right choice depends on your task, budget, and requirements",
+    ],
+    visual: ChoosingModelVisual,
   },
 
   {
