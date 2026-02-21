@@ -6,6 +6,7 @@ export const speakRequestSchema = z.object({
   format: z.enum(["mp3", "opus", "wav", "aac", "flac"]).optional().openapi({ example: "mp3" }),
   speed: z.number().min(0.25).max(4.0).optional().openapi({ example: 1.0 }),
   model: z.string().optional(),
+  save: z.boolean().optional().openapi({ description: "When true, buffer and save the audio server-side, returning X-Audio-Id header" }),
 });
 
 export const transcribeResponseSchema = z.object({

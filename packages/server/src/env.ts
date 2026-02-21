@@ -20,6 +20,7 @@ export const env = createEnv({
     VOICE_STT_MODEL: z.string().default("whisper-1"),
     VOICE_DEFAULT_SPEAKER: z.string().default("alloy"),
     VOICE_RETAIN_AUDIO: z.coerce.boolean().default(false),
+    GROQ_API_KEY: z.string().default(""),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: false,

@@ -2,7 +2,8 @@ multi-modal
 evals
 self-improving agents
 a/b testing
-voice
+[] voice
+web search
 skillz
 
 utility 

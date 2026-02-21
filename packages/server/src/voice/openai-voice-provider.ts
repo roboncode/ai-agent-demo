@@ -19,23 +19,31 @@ const VOICES: VoiceSpeaker[] = [
 
 export interface OpenAIVoiceProviderConfig {
   apiKey: string;
+  baseUrl?: string;
+  name?: string;
+  label?: string;
   ttsModel?: string;
   sttModel?: string;
   defaultSpeaker?: string;
 }
 
 export class OpenAIVoiceProvider implements VoiceProvider {
-  readonly name = "openai";
+  readonly name: string;
+  readonly label: string;
 
   private apiKey: string;
+  private baseUrl: string;
   private ttsModel: string;
   private sttModel: string;
   private defaultSpeaker: string;
 
   constructor(config: OpenAIVoiceProviderConfig) {
+    this.name = config.name ?? "openai";
+    this.label = config.label ?? "OpenAI";
     this.apiKey = config.apiKey;
+    this.baseUrl = (config.baseUrl ?? OPENAI_BASE).replace(/\/$/, "");
     this.ttsModel = config.ttsModel ?? "tts-1";
-    this.sttModel = config.sttModel ?? "whisper-1";
+    this.sttModel = config.sttModel ?? "gpt-4o-mini-transcribe";
     this.defaultSpeaker = config.defaultSpeaker ?? "alloy";
   }
 
@@ -61,7 +69,7 @@ export class OpenAIVoiceProvider implements VoiceProvider {
 
     form.append("response_format", "verbose_json");
 
-    const res = await fetch(`${OPENAI_BASE}/audio/transcriptions`, {
+    const res = await fetch(`${this.baseUrl}/audio/transcriptions`, {
       method: "POST",
       headers: { Authorization: `Bearer ${this.apiKey}` },
       body: form,
@@ -89,7 +97,7 @@ export class OpenAIVoiceProvider implements VoiceProvider {
     const speaker = options?.speaker ?? this.defaultSpeaker;
     const speed = options?.speed ?? 1.0;
 
-    const res = await fetch(`${OPENAI_BASE}/audio/speech`, {
+    const res = await fetch(`${this.baseUrl}/audio/speech`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

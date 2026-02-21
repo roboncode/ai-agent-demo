@@ -29,13 +29,20 @@ export interface SpeakOptions {
   speaker?: string;
   format?: string;
   speed?: number;
+  save?: boolean;
 }
 
-export async function transcribe(audioBlob: Blob): Promise<TranscribeResult> {
+export interface SpeakResult {
+  blob: Blob;
+  audioId?: string;
+}
+
+export async function transcribe(audioBlob: Blob, options?: { provider?: string }): Promise<TranscribeResult> {
   const form = new FormData();
   form.append("audio", audioBlob, "recording.webm");
 
-  const res = await fetch(`${getBaseUrl()}/api/voice/transcribe`, {
+  const params = options?.provider ? `?provider=${options.provider}` : "";
+  const res = await fetch(`${getBaseUrl()}/api/voice/transcribe${params}`, {
     method: "POST",
     headers: getHeaders(),
     body: form,
@@ -49,7 +56,7 @@ export async function transcribe(audioBlob: Blob): Promise<TranscribeResult> {
   return res.json();
 }
 
-export async function speak(text: string, options?: SpeakOptions): Promise<Blob> {
+export async function speak(text: string, options?: SpeakOptions): Promise<SpeakResult> {
   const res = await fetch(`${getBaseUrl()}/api/voice/speak`, {
     method: "POST",
     headers: getHeaders({ "Content-Type": "application/json" }),
@@ -58,6 +65,7 @@ export async function speak(text: string, options?: SpeakOptions): Promise<Blob>
       speaker: options?.speaker,
       format: options?.format ?? "mp3",
       speed: options?.speed,
+      save: options?.save ?? true,
     }),
   });
 
@@ -66,7 +74,13 @@ export async function speak(text: string, options?: SpeakOptions): Promise<Blob>
     throw new Error(err.error ?? `Speak failed: ${res.status}`);
   }
 
-  return res.blob();
+  const audioId = res.headers.get("X-Audio-Id") ?? undefined;
+  const blob = await res.blob();
+  return { blob, audioId };
+}
+
+export function getAudioUrl(id: string): string {
+  return `${getBaseUrl()}/api/voice/audio/${id}`;
 }
 
 export async function getSpeakers(): Promise<Speaker[]> {
@@ -81,6 +95,26 @@ export async function getSpeakers(): Promise<Speaker[]> {
 
   const data = await res.json();
   return data.speakers;
+}
+
+export interface SttProvider {
+  name: string;
+  label: string;
+  isDefault: boolean;
+}
+
+export async function getProviders(): Promise<SttProvider[]> {
+  const res = await fetch(`${getBaseUrl()}/api/voice/providers`, {
+    headers: getHeaders(),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? `Get providers failed: ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.providers;
 }
 
 export type { SseEvent };

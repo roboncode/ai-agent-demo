@@ -524,7 +524,9 @@
 .vc-review-input {
   font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 14px;
+  line-height: 1.5;
   width: 100%;
+  min-height: 42px;
   padding: 10px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -533,6 +535,8 @@
   outline: none;
   transition: border-color 0.2s;
   box-sizing: border-box;
+  resize: none;
+  overflow-y: auto;
 }
 
 .vc-review-input:focus {
@@ -591,9 +595,20 @@
   color: var(--text-primary);
 }
 
-/* ── Play button (inline in agent bubble) ── */
+/* ── Card action bar ── */
 
-.vc-play-btn {
+.vc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+/* Shared base for inline action buttons */
+.vc-play-btn,
+.vc-pause-btn,
+.vc-resume-btn,
+.vc-stop-inline-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -601,7 +616,6 @@
   font-size: 11px;
   font-weight: 500;
   padding: 4px 12px;
-  margin-top: 10px;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -610,7 +624,9 @@
   transition: all 0.2s;
 }
 
-.vc-play-btn:hover:not(:disabled) {
+.vc-play-btn:hover:not(:disabled),
+.vc-pause-btn:hover,
+.vc-resume-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-glow);
@@ -620,6 +636,48 @@
 .vc-play-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.vc-stop-inline-btn:hover {
+  border-color: var(--error);
+  color: var(--error);
+  background: var(--error-bg);
+  box-shadow: 0 0 8px rgba(255, 68, 102, 0.15);
+}
+
+/* Icon-only utility buttons */
+.vc-download-btn,
+.vc-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.vc-download-btn:hover:not(:disabled),
+.vc-copy-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.vc-download-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Dim pipe divider */
+.vc-action-sep {
+  color: var(--text-dim);
+  font-size: 11px;
+  user-select: none;
+  opacity: 0.4;
 }
 
 /* ── Streaming typing dots ── */

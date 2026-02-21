@@ -2,40 +2,24 @@ import { createSignal, createEffect, For, Show, onMount, onCleanup } from "solid
 import { createStore } from "solid-js/store";
 import { useAudioRecorder } from "../lib/useAudioRecorder";
 import { useAudioPlayer } from "../lib/useAudioPlayer";
+import { createLocalStore } from "../lib/createLocalStore";
 import {
   transcribe,
   speak,
   getSpeakers,
+  getProviders,
+  getAudioUrl,
   streamSupervisor,
   type Speaker,
+  type SttProvider,
   type SseEvent,
 } from "../lib/api";
-
-type Status = "idle" | "recording" | "transcribing" | "reviewing" | "streaming" | "speaking";
-
-interface ActivityEvent {
-  type:
-    | "agent-start"
-    | "agent-end"
-    | "delegate-start"
-    | "delegate-end"
-    | "tool-call"
-    | "tool-result"
-    | "agent-think"
-    | "agent-plan";
-  label: string;
-  detail?: string;
-}
-
-interface Exchange {
-  id: number;
-  userText: string;
-  agentText: string;
-  activityLog: ActivityEvent[];
-  isComplete: boolean;
-  usage?: { totalTokens?: number };
-  timestamp: Date;
-}
+import type { Status, Exchange } from "./types";
+import SettingsPanel from "./SettingsPanel";
+import ExchangeCard from "./ExchangeCard";
+import ReviewBar from "./ReviewBar";
+import ErrorBanner from "./ErrorBanner";
+import MicButton from "./MicButton";
 
 export default function VoiceConversation() {
   const recorder = useAudioRecorder();
@@ -44,19 +28,39 @@ export default function VoiceConversation() {
   const [status, setStatus] = createSignal<Status>("idle");
   const [store, setStore] = createStore<{ exchanges: Exchange[] }>({ exchanges: [] });
   const [speakers, setSpeakers] = createSignal<Speaker[]>([]);
-  const [selectedSpeaker, setSelectedSpeaker] = createSignal("alloy");
   const [conversationId, setConversationId] = createSignal<string | undefined>();
   const [errorMsg, setErrorMsg] = createSignal<string | null>(null);
   const [showSettings, setShowSettings] = createSignal(false);
   const [reviewText, setReviewText] = createSignal("");
+  const [sttProviders, setSttProviders] = createSignal<SttProvider[]>([]);
+  const [playingExchangeId, setPlayingExchangeId] = createSignal<number | null>(null);
+
+  const [settings, setSettings] = createLocalStore("vc-settings", {
+    speaker: "alloy",
+    sttProvider: "openai",
+  });
+
+  const audioCache = new Map<number, Blob>();
 
   let scrollRef: HTMLDivElement | undefined;
   let nextId = 1;
 
+  // ---------- Init ----------
+
   onMount(async () => {
     try {
-      const s = await getSpeakers();
+      const [s, p] = await Promise.all([getSpeakers(), getProviders()]);
       setSpeakers(s);
+      if (p.length > 0) {
+        setSttProviders(p);
+        if (!settings.sttProvider || !p.find((x) => x.name === settings.sttProvider)) {
+          const def = p.find((x) => x.isDefault);
+          if (def) setSettings("sttProvider", def.name);
+        }
+      }
+      if (s.length > 0 && !s.find((x) => x.voiceId === settings.speaker)) {
+        setSettings("speaker", s[0].voiceId);
+      }
     } catch {
       // Voice might not be configured
     }
@@ -93,19 +97,18 @@ export default function VoiceConversation() {
     window.removeEventListener("keyup", handleKeyUp);
   });
 
-  // Auto-scroll conversation history
+  // Auto-scroll
   createEffect(() => {
     if (store.exchanges.length && scrollRef) {
       scrollRef.scrollTop = scrollRef.scrollHeight;
     }
   });
 
-  // Find index of exchange by id
   function findIdx(exchangeId: number): number {
     return store.exchanges.findIndex((ex) => ex.id === exchangeId);
   }
 
-  // ---------- Push-to-talk handlers ----------
+  // ---------- Recording ----------
 
   async function handleMicDown() {
     setErrorMsg(null);
@@ -113,8 +116,7 @@ export default function VoiceConversation() {
       await recorder.start();
       setStatus("recording");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Microphone access denied";
-      setErrorMsg(msg);
+      setErrorMsg(err instanceof Error ? err.message : "Microphone access denied");
     }
   }
 
@@ -123,23 +125,21 @@ export default function VoiceConversation() {
     try {
       const audioBlob = await recorder.stop();
       setStatus("transcribing");
-
-      const result = await transcribe(audioBlob);
+      const result = await transcribe(audioBlob, { provider: settings.sttProvider });
       setReviewText(result.text);
       setStatus("reviewing");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Transcription failed";
-      setErrorMsg(msg);
+      setErrorMsg(err instanceof Error ? err.message : "Transcription failed");
       setStatus("idle");
     }
   }
+
+  // ---------- Send ----------
 
   function handleCancelReview() {
     setReviewText("");
     setStatus("idle");
   }
-
-  // ---------- SSE streaming handler ----------
 
   async function handleSend() {
     const text = reviewText().trim();
@@ -149,7 +149,6 @@ export default function VoiceConversation() {
     setStatus("streaming");
 
     const exchangeId = nextId++;
-    // Append new exchange at end of store array
     setStore("exchanges", store.exchanges.length, {
       id: exchangeId,
       userText: text,
@@ -166,15 +165,15 @@ export default function VoiceConversation() {
         processEvent(exchangeId, event);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Stream failed";
-      setErrorMsg(msg);
+      setErrorMsg(err instanceof Error ? err.message : "Stream failed");
     }
 
-    // Mark complete
     const idx = findIdx(exchangeId);
     if (idx !== -1) setStore("exchanges", idx, "isComplete", true);
     setStatus("idle");
   }
+
+  // ---------- SSE processing ----------
 
   function processEvent(exchangeId: number, event: SseEvent) {
     const idx = findIdx(exchangeId);
@@ -184,75 +183,58 @@ export default function VoiceConversation() {
       case "text-delta": {
         const text = tryParseJson(event.data)?.text ?? event.data;
         setStore("exchanges", idx, "agentText", (prev) => prev + text);
-        // Auto-scroll
         if (scrollRef) scrollRef.scrollTop = scrollRef.scrollHeight;
         break;
       }
-
       case "agent:start": {
         const d = tryParseJson(event.data);
-        const label = d?.agent ? `Agent started: ${d.agent}` : "Agent started";
-        pushActivity(idx, { type: "agent-start", label });
+        pushActivity(idx, { type: "agent-start", label: d?.agent ? `Agent started: ${d.agent}` : "Agent started" });
         break;
       }
-
       case "agent:end": {
         const d = tryParseJson(event.data);
-        const label = d?.agent ? `Agent finished: ${d.agent}` : "Agent finished";
-        pushActivity(idx, { type: "agent-end", label });
+        pushActivity(idx, { type: "agent-end", label: d?.agent ? `Agent finished: ${d.agent}` : "Agent finished" });
         break;
       }
-
       case "delegate:start": {
         const d = tryParseJson(event.data);
-        const label =
-          d?.from && d?.to
-            ? `Delegating: ${d.from} \u2192 ${d.to}`
-            : "Delegating to sub-agent";
-        pushActivity(idx, { type: "delegate-start", label, detail: d?.reason });
+        pushActivity(idx, {
+          type: "delegate-start",
+          label: d?.from && d?.to ? `Delegating: ${d.from} \u2192 ${d.to}` : "Delegating to sub-agent",
+          detail: d?.reason,
+        });
         break;
       }
-
       case "delegate:end": {
         const d = tryParseJson(event.data);
-        const label = d?.agent ? `Delegate complete: ${d.agent}` : "Delegate complete";
-        pushActivity(idx, { type: "delegate-end", label });
+        pushActivity(idx, { type: "delegate-end", label: d?.agent ? `Delegate complete: ${d.agent}` : "Delegate complete" });
         break;
       }
-
       case "tool:call": {
         const d = tryParseJson(event.data);
-        const label = d?.tool ? `Tool call: ${d.tool}` : "Tool call";
         pushActivity(idx, {
           type: "tool-call",
-          label,
+          label: d?.tool ? `Tool call: ${d.tool}` : "Tool call",
           detail: d?.args ? JSON.stringify(d.args) : undefined,
         });
         break;
       }
-
       case "tool:result": {
         const d = tryParseJson(event.data);
-        const label = d?.tool ? `Tool result: ${d.tool}` : "Tool result";
-        pushActivity(idx, { type: "tool-result", label });
+        pushActivity(idx, { type: "tool-result", label: d?.tool ? `Tool result: ${d.tool}` : "Tool result" });
         break;
       }
-
       case "agent:think": {
         const d = tryParseJson(event.data);
-        const label = d?.text ? `Thinking: ${d.text.slice(0, 80)}` : "Thinking...";
-        pushActivity(idx, { type: "agent-think", label });
+        pushActivity(idx, { type: "agent-think", label: d?.text ? `Thinking: ${d.text.slice(0, 80)}` : "Thinking..." });
         break;
       }
-
       case "agent:plan": {
         const d = tryParseJson(event.data);
         const count = d?.tasks?.length ?? d?.steps?.length;
-        const label = count ? `Plan: ${count} tasks` : "Planning...";
-        pushActivity(idx, { type: "agent-plan", label, detail: d?.summary });
+        pushActivity(idx, { type: "agent-plan", label: count ? `Plan: ${count} tasks` : "Planning...", detail: d?.summary });
         break;
       }
-
       case "done": {
         const d = tryParseJson(event.data);
         if (d?.conversationId) setConversationId(d.conversationId);
@@ -262,31 +244,69 @@ export default function VoiceConversation() {
     }
   }
 
-  function pushActivity(idx: number, activity: ActivityEvent) {
+  function pushActivity(idx: number, activity: { type: string; label: string; detail?: string }) {
     const len = store.exchanges[idx].activityLog.length;
-    setStore("exchanges", idx, "activityLog", len, activity);
+    setStore("exchanges", idx, "activityLog", len, activity as any);
   }
 
   function tryParseJson(data: string): any {
+    try { return JSON.parse(data); } catch { return null; }
+  }
+
+  // ---------- Playback ----------
+
+  async function handlePlayResponse(exchangeId: number, text: string) {
     try {
-      return JSON.parse(data);
-    } catch {
-      return null;
+      setPlayingExchangeId(exchangeId);
+      setStatus("speaking");
+
+      let blob: Blob;
+      const cached = audioCache.get(exchangeId);
+      if (cached) {
+        blob = cached;
+      } else {
+        const result = await speak(text, { speaker: settings.speaker, save: true });
+        blob = result.blob;
+        audioCache.set(exchangeId, blob);
+        if (result.audioId) {
+          const idx = findIdx(exchangeId);
+          if (idx !== -1) setStore("exchanges", idx, "audioId", result.audioId);
+        }
+      }
+
+      await player.play(blob);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Playback failed");
+    } finally {
+      setPlayingExchangeId(null);
+      setStatus("idle");
     }
   }
 
-  // ---------- Play response audio ----------
+  function handleDownload(exchangeId: number) {
+    const cached = audioCache.get(exchangeId);
+    const ex = store.exchanges.find((e) => e.id === exchangeId);
+    const url = cached
+      ? URL.createObjectURL(cached)
+      : ex?.audioId
+        ? getAudioUrl(ex.audioId)
+        : null;
+    if (!url) return;
 
-  async function handlePlayResponse(text: string) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `response-${exchangeId}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (cached) URL.revokeObjectURL(url);
+  }
+
+  async function handleCopy(_exchangeId: number, text: string) {
     try {
-      setStatus("speaking");
-      const blob = await speak(text, { speaker: selectedSpeaker() });
-      await player.play(blob);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Playback failed";
-      setErrorMsg(msg);
-    } finally {
-      setStatus("idle");
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setErrorMsg("Failed to copy to clipboard");
     }
   }
 
@@ -294,52 +314,19 @@ export default function VoiceConversation() {
 
   function statusLabel(): string {
     switch (status()) {
-      case "recording":
-        return "Recording...";
-      case "transcribing":
-        return "Transcribing...";
-      case "reviewing":
-        return "Review transcription";
-      case "streaming":
-        return "Agent is working...";
-      case "speaking":
-        return "Playing audio...";
-      default:
-        return "Hold to speak";
+      case "recording":    return "Recording...";
+      case "transcribing": return "Transcribing...";
+      case "reviewing":    return "Review transcription";
+      case "streaming":    return "Agent is working...";
+      case "speaking":     return "Playing audio...";
+      default:             return "Hold to speak";
     }
   }
 
-  function formatTime(date: Date): string {
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  }
-
-  function activityIcon(type: ActivityEvent["type"]): string {
-    switch (type) {
-      case "delegate-start":
-      case "delegate-end":
-        return "\u21AA";
-      case "tool-call":
-        return "\u2692";
-      case "tool-result":
-        return "\u2713";
-      case "agent-think":
-        return "\u2026";
-      case "agent-plan":
-        return "\u25B6";
-      case "agent-start":
-        return "\u25CB";
-      case "agent-end":
-        return "\u25CF";
-      default:
-        return "\u2022";
-    }
-  }
-
-  // ---------- JSX ----------
+  // ---------- Render ----------
 
   return (
     <div class="vc-root">
-      {/* Header */}
       <header class="vc-header">
         <div class="vc-header-left">
           <div class="vc-logo">
@@ -364,28 +351,17 @@ export default function VoiceConversation() {
         </button>
       </header>
 
-      {/* Settings panel */}
       <Show when={showSettings()}>
-        <div class="vc-settings">
-          <div class="vc-setting-row">
-            <label class="vc-label">Voice</label>
-            <select
-              class="vc-select"
-              value={selectedSpeaker()}
-              onChange={(e) => setSelectedSpeaker(e.target.value)}
-            >
-              <For each={speakers()}>
-                {(s) => <option value={s.voiceId}>{s.name}</option>}
-              </For>
-              <Show when={speakers().length === 0}>
-                <option value="alloy">Alloy (default)</option>
-              </Show>
-            </select>
-          </div>
-        </div>
+        <SettingsPanel
+          speaker={settings.speaker}
+          onSpeakerChange={(v) => setSettings("speaker", v)}
+          speakers={speakers()}
+          sttProvider={settings.sttProvider}
+          onSttProviderChange={(v) => setSettings("sttProvider", v)}
+          sttProviders={sttProviders()}
+        />
       </Show>
 
-      {/* Conversation history */}
       <div class="vc-history" ref={scrollRef}>
         <Show when={store.exchanges.length === 0}>
           <div class="vc-empty">
@@ -406,156 +382,43 @@ export default function VoiceConversation() {
 
         <For each={store.exchanges}>
           {(ex) => (
-            <div class="vc-exchange">
-              {/* User bubble */}
-              <div class="vc-bubble vc-user">
-                <div class="vc-bubble-header">
-                  <span class="vc-bubble-role">You</span>
-                  <span class="vc-bubble-time">{formatTime(ex.timestamp)}</span>
-                </div>
-                <p>{ex.userText}</p>
-              </div>
-
-              {/* Activity log */}
-              <Show when={ex.activityLog.length > 0}>
-                <div class="vc-activity-log">
-                  <For each={ex.activityLog}>
-                    {(activity) => (
-                      <div class={`vc-activity-item vc-activity-${activity.type}`}>
-                        <span class="vc-activity-icon">{activityIcon(activity.type)}</span>
-                        <span class="vc-activity-label">{activity.label}</span>
-                      </div>
-                    )}
-                  </For>
-                </div>
-              </Show>
-
-              {/* Agent bubble */}
-              <Show when={ex.agentText}>
-                <div class="vc-bubble vc-agent">
-                  <div class="vc-bubble-header">
-                    <span class="vc-bubble-role">Agent</span>
-                    <span class="vc-bubble-time">{formatTime(ex.timestamp)}</span>
-                  </div>
-                  <p>{ex.agentText}</p>
-                  <Show when={ex.isComplete}>
-                    <button
-                      class="vc-play-btn"
-                      onClick={() => handlePlayResponse(ex.agentText)}
-                      disabled={player.isPlaying()}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="5,3 19,12 5,21" />
-                      </svg>
-                      Play
-                    </button>
-                  </Show>
-                </div>
-              </Show>
-
-              {/* Streaming indicator when no text yet */}
-              <Show when={!ex.agentText && !ex.isComplete}>
-                <div class="vc-bubble vc-agent vc-agent-streaming">
-                  <div class="vc-bubble-header">
-                    <span class="vc-bubble-role">Agent</span>
-                  </div>
-                  <span class="vc-typing-dots">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                </div>
-              </Show>
-            </div>
+            <ExchangeCard
+              exchange={ex}
+              isPlaying={player.isPlaying()}
+              isPaused={player.isPaused()}
+              isPlayingThis={playingExchangeId() === ex.id}
+              hasAudioCache={audioCache.has(ex.id)}
+              onPlay={handlePlayResponse}
+              onPause={() => player.pause()}
+              onResume={() => player.resume()}
+              onStop={() => player.stop()}
+              onDownload={handleDownload}
+              onCopy={handleCopy}
+            />
           )}
         </For>
       </div>
 
-      {/* Review area */}
       <Show when={status() === "reviewing"}>
-        <div class="vc-review">
-          <input
-            class="vc-review-input"
-            type="text"
-            value={reviewText()}
-            onInput={(e) => setReviewText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-              if (e.key === "Escape") handleCancelReview();
-            }}
-            placeholder="Edit transcription..."
-            ref={(el: HTMLInputElement) => setTimeout(() => el.focus())}
-          />
-          <div class="vc-review-actions">
-            <button class="vc-send-btn" onClick={handleSend} disabled={!reviewText().trim()}>
-              Send
-            </button>
-            <button class="vc-cancel-btn" onClick={handleCancelReview}>
-              Cancel
-            </button>
-          </div>
-        </div>
+        <ReviewBar
+          text={reviewText()}
+          onTextChange={setReviewText}
+          onSend={handleSend}
+          onCancel={handleCancelReview}
+        />
       </Show>
 
-      {/* Error display */}
-      <Show when={errorMsg()}>
-        <div class="vc-error">
-          <span>{errorMsg()}</span>
-          <button onClick={() => setErrorMsg(null)} class="vc-error-dismiss">
-            &times;
-          </button>
-        </div>
-      </Show>
+      <ErrorBanner message={errorMsg()} onDismiss={() => setErrorMsg(null)} />
 
-      {/* Bottom controls */}
       <div class="vc-controls">
         <div class="vc-status">{statusLabel()}</div>
-
-        <button
-          class={`vc-mic-btn ${status() === "recording" ? "recording" : ""} ${
-            status() !== "idle" && status() !== "recording" && status() !== "reviewing"
-              ? "processing"
-              : ""
-          }`}
-          onMouseDown={handleMicDown}
-          onMouseUp={handleMicUp}
-          onMouseLeave={() => {
-            if (recorder.isRecording()) handleMicUp();
-          }}
-          onTouchStart={(e) => {
-            e.preventDefault();
-            handleMicDown();
-          }}
-          onTouchEnd={(e) => {
-            e.preventDefault();
-            handleMicUp();
-          }}
-          disabled={status() !== "idle" && status() !== "recording"}
-        >
-          <Show
-            when={status() === "recording"}
-            fallback={
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-            }
-          >
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-          </Show>
-        </button>
-
-        <Show when={player.isPlaying()}>
-          <button class="vc-stop-btn" onClick={() => player.stop()}>
-            Stop playback
-          </button>
+        <Show when={!player.isPlaying()}>
+          <MicButton
+            status={status()}
+            onMicDown={handleMicDown}
+            onMicUp={handleMicUp}
+            isRecording={recorder.isRecording}
+          />
         </Show>
       </div>
     </div>

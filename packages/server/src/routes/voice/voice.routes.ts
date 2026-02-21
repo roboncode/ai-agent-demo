@@ -13,8 +13,8 @@ import { env } from "../../env.js";
 
 const router = createRouter();
 
-function requireVoice() {
-  const provider = voiceManager.get();
+function requireVoice(name?: string) {
+  const provider = voiceManager.get(name);
   if (!provider) {
     throw new Error("VOICE_UNAVAILABLE");
   }
@@ -60,6 +60,40 @@ router.openapi(
   },
 );
 
+// GET /providers — List available STT providers
+router.openapi(
+  createRoute({
+    method: "get",
+    path: "/providers",
+    tags: ["Voice"],
+    summary: "List available transcription providers",
+    description: "Returns the configured STT providers and which is the default",
+    responses: {
+      200: {
+        description: "List of providers",
+        content: {
+          "application/json": {
+            schema: z.object({
+              providers: z.array(z.object({
+                name: z.string(),
+                label: z.string(),
+                isDefault: z.boolean(),
+              })),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const providers = voiceManager.list();
+    const defaultName = voiceManager.getDefault();
+    return c.json({
+      providers: providers.map((p) => ({ name: p.name, label: p.label, isDefault: p.name === defaultName })),
+    });
+  },
+);
+
 // POST /transcribe — Speech-to-text
 router.openapi(
   createRoute({
@@ -67,8 +101,11 @@ router.openapi(
     path: "/transcribe",
     tags: ["Voice"],
     summary: "Transcribe audio to text",
-    description: "Accepts an audio file (multipart/form-data) and returns the transcription",
+    description: "Accepts an audio file (multipart/form-data) and returns the transcription. Use ?provider=groq to use Groq.",
     request: {
+      query: z.object({
+        provider: z.string().optional().openapi({ description: "Voice provider name (e.g. openai, groq)" }),
+      }),
       body: {
         content: {
           "multipart/form-data": {
@@ -103,11 +140,16 @@ router.openapi(
     },
   }),
   async (c) => {
+    const providerName = c.req.query("provider") || undefined;
+
     let provider;
     try {
-      provider = requireVoice();
+      provider = requireVoice(providerName);
     } catch {
-      return c.json({ error: "Voice provider not configured. Set OPENAI_API_KEY to enable voice features." }, 503);
+      const msg = providerName
+        ? `Voice provider "${providerName}" not available. Check API key and config.`
+        : "Voice provider not configured. Set OPENAI_API_KEY to enable voice features.";
+      return c.json({ error: msg }, 503);
     }
 
     const formData = await c.req.formData();
@@ -138,7 +180,7 @@ router.openapi(
       audioId = entry.id;
     }
 
-    return c.json({ ...result, ...(audioId && { audioId }) });
+    return c.json({ ...result, provider: provider.name, ...(audioId && { audioId }) });
   },
 );
 
@@ -178,7 +220,7 @@ router.openapi(
     }
 
     const body = await c.req.json();
-    const { text, speaker, format, speed, model } = body;
+    const { text, speaker, format, speed, model, save } = body;
 
     const audioFormat = format ?? "mp3";
     const audioStream = await provider.speak(text, { speaker, format: audioFormat, speed, model });
@@ -190,10 +232,47 @@ router.openapi(
       aac: "audio/aac",
       flac: "audio/flac",
     };
+    const mimeType = mimeTypes[audioFormat] ?? "audio/mpeg";
+
+    if (save) {
+      // Buffer the stream so we can save and return the full audio
+      const chunks: Uint8Array[] = [];
+      const reader = audioStream instanceof ReadableStream
+        ? audioStream.getReader()
+        : null;
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+        }
+      } else {
+        // Fallback: audioStream might be a Node readable or buffer
+        for await (const chunk of audioStream as AsyncIterable<Uint8Array>) {
+          chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk));
+        }
+      }
+
+      const buffer = Buffer.concat(chunks);
+      const entry = await saveAudio(buffer, mimeType, {
+        text,
+        speaker,
+        source: "speak",
+      });
+
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": mimeType,
+          "Content-Length": String(buffer.length),
+          "X-Audio-Id": entry.id,
+        },
+      });
+    }
 
     return new Response(audioStream, {
       headers: {
-        "Content-Type": mimeTypes[audioFormat] ?? "audio/mpeg",
+        "Content-Type": mimeType,
         "Transfer-Encoding": "chunked",
       },
     });

@@ -1,5 +1,6 @@
 export interface VoiceProvider {
   readonly name: string;
+  readonly label: string;
   transcribe(audio: Blob | Buffer, options?: TranscribeOptions): Promise<TranscribeResult>;
   speak(text: string, options?: SpeakOptions): Promise<ReadableStream<Uint8Array>>;
   getSpeakers(): Promise<VoiceSpeaker[]>;
