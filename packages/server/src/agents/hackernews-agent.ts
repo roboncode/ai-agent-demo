@@ -1,5 +1,4 @@
-import { generateText, stepCountIs } from "ai";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import {
   hackernewsTopStoriesTool,
   hackernewsStoryDetailTool,
@@ -23,26 +22,5 @@ export const HACKERNEWS_AGENT_CONFIG = {
   },
 };
 
-export async function runHackernewsAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: {
-      getTopStories: hackernewsTopStoriesTool,
-      getStoryDetail: hackernewsStoryDetailTool,
-    },
-    stopWhen: stepCountIs(5),
-  });
-
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
-
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+export const runHackernewsAgent = (message: string, model?: string) =>
+  runAgent(HACKERNEWS_AGENT_CONFIG, message, model);

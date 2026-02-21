@@ -1,5 +1,4 @@
-import { generateText, stepCountIs } from "ai";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import { movieSearchTool, movieDetailTool } from "../tools/movies.js";
 
 const SYSTEM_PROMPT = `You are a movie knowledge and recommendation agent. Your job is to help users discover movies, get details, and receive personalized recommendations.
@@ -20,26 +19,5 @@ export const KNOWLEDGE_AGENT_CONFIG = {
   },
 };
 
-export async function runKnowledgeAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: {
-      searchMovies: movieSearchTool,
-      getMovieDetail: movieDetailTool,
-    },
-    stopWhen: stepCountIs(5),
-  });
-
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
-
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+export const runKnowledgeAgent = (message: string, model?: string) =>
+  runAgent(KNOWLEDGE_AGENT_CONFIG, message, model);

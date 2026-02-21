@@ -38,7 +38,8 @@ export const hackernewsTopStoriesTool = tool({
       })
     );
 
-    return { stories: stories.filter(Boolean), count: stories.filter(Boolean).length };
+    const validStories = stories.filter(Boolean);
+    return { stories: validStories, count: validStories.length };
   },
 });
 

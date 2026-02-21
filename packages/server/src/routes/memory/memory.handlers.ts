@@ -26,10 +26,10 @@ export async function handleDeleteMemory(c: Context) {
   if (!deleted) {
     return c.json({ error: "Memory not found" }, 404);
   }
-  return c.json({ deleted: true as const, key: id }, 200);
+  return c.json({ deleted: true, key: id }, 200);
 }
 
 export async function handleClearMemories(c: Context) {
   await clearMemories();
-  return c.json({ cleared: true as boolean }, 200);
+  return c.json({ cleared: true }, 200);
 }

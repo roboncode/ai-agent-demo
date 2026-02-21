@@ -9,11 +9,22 @@ interface PendingAction {
   parameters: Record<string, unknown>;
   status: "pending_approval" | "approved" | "rejected";
   result?: unknown;
-  createdAt: string;
+  createdAt: number; // timestamp for TTL cleanup
 }
 
-// In-memory store for pending actions
+// In-memory store for pending actions with TTL cleanup
 const pendingActions = new Map<string, PendingAction>();
+const ACTION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_PENDING_ACTIONS = 1000;
+
+function cleanupExpiredActions() {
+  const now = Date.now();
+  for (const [id, action] of pendingActions) {
+    if (now - action.createdAt > ACTION_TTL_MS) {
+      pendingActions.delete(id);
+    }
+  }
+}
 
 const SYSTEM_PROMPT = `You are an agent that proposes actions for human approval before executing them.
 
@@ -58,6 +69,19 @@ function generateId() {
 }
 
 export async function runHumanInLoopAgent(message: string, model?: string) {
+  // Clean up expired actions before adding new ones
+  cleanupExpiredActions();
+
+  // Enforce max size to prevent unbounded growth
+  if (pendingActions.size > MAX_PENDING_ACTIONS) {
+    const oldest = [...pendingActions.entries()]
+      .sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toRemove = oldest.slice(0, pendingActions.size - MAX_PENDING_ACTIONS);
+    for (const [id] of toRemove) {
+      pendingActions.delete(id);
+    }
+  }
+
   const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
@@ -80,7 +104,7 @@ export async function runHumanInLoopAgent(message: string, model?: string) {
         description: `${toolCall.toolName} with params: ${JSON.stringify(input)}`,
         parameters: input ?? {},
         status: "pending_approval",
-        createdAt: new Date().toISOString(),
+        createdAt: Date.now(),
       };
       pendingActions.set(id, action);
       proposals.push(action);
@@ -125,7 +149,6 @@ export async function approveAction(id: string, approved: boolean) {
   action.status = approved ? "approved" : "rejected";
 
   if (approved) {
-    // Simulate execution
     action.result = {
       executed: true,
       action: action.action,
@@ -141,12 +164,14 @@ export async function approveAction(id: string, approved: boolean) {
     };
   }
 
-  pendingActions.set(id, action);
-
-  return {
+  // Remove after resolution to prevent leak
+  const result = {
     id: action.id,
     action: action.action,
     status: action.status,
     result: action.result,
   };
+  pendingActions.delete(id);
+
+  return result;
 }

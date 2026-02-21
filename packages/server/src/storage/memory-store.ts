@@ -13,8 +13,19 @@ export interface MemoryEntry {
 
 type MemoryData = Record<string, MemoryEntry>;
 
-// Simple write lock to prevent concurrent write corruption
-let writeLock: Promise<void> = Promise.resolve();
+// Mutex to serialize all read-modify-write operations
+let mutex: Promise<void> = Promise.resolve();
+
+function withLock<T>(fn: () => Promise<T>): Promise<T> {
+  let result: Promise<T>;
+  mutex = mutex.then(async () => {
+    result = fn();
+    await result;
+  }).catch(() => {
+    // Ensure the chain doesn't break on errors
+  });
+  return mutex.then(() => result!);
+}
 
 async function ensureFile() {
   const dir = dirname(MEMORY_FILE);
@@ -32,7 +43,6 @@ async function readMemories(): Promise<MemoryData> {
   try {
     return JSON.parse(raw);
   } catch {
-    // Reset if corrupted
     await writeFile(MEMORY_FILE, JSON.stringify({}, null, 2));
     return {};
   }
@@ -40,25 +50,23 @@ async function readMemories(): Promise<MemoryData> {
 
 async function writeMemories(data: MemoryData): Promise<void> {
   await ensureFile();
-  // Serialize writes to prevent concurrent corruption
-  writeLock = writeLock.then(async () => {
-    await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2));
-  });
-  await writeLock;
+  await writeFile(MEMORY_FILE, JSON.stringify(data, null, 2));
 }
 
-export async function saveMemory(key: string, value: string): Promise<MemoryEntry> {
-  const data = await readMemories();
-  const now = new Date().toISOString();
-  const entry: MemoryEntry = {
-    key,
-    value,
-    createdAt: data[key]?.createdAt ?? now,
-    updatedAt: now,
-  };
-  data[key] = entry;
-  await writeMemories(data);
-  return entry;
+export function saveMemory(key: string, value: string): Promise<MemoryEntry> {
+  return withLock(async () => {
+    const data = await readMemories();
+    const now = new Date().toISOString();
+    const entry: MemoryEntry = {
+      key,
+      value,
+      createdAt: data[key]?.createdAt ?? now,
+      updatedAt: now,
+    };
+    data[key] = entry;
+    await writeMemories(data);
+    return entry;
+  });
 }
 
 export async function recallMemory(key: string): Promise<MemoryEntry | null> {
@@ -71,14 +79,18 @@ export async function listMemories(): Promise<MemoryEntry[]> {
   return Object.values(data);
 }
 
-export async function deleteMemory(key: string): Promise<boolean> {
-  const data = await readMemories();
-  if (!data[key]) return false;
-  delete data[key];
-  await writeMemories(data);
-  return true;
+export function deleteMemory(key: string): Promise<boolean> {
+  return withLock(async () => {
+    const data = await readMemories();
+    if (!data[key]) return false;
+    delete data[key];
+    await writeMemories(data);
+    return true;
+  });
 }
 
-export async function clearMemories(): Promise<void> {
-  await writeMemories({});
+export function clearMemories(): Promise<void> {
+  return withLock(async () => {
+    await writeMemories({});
+  });
 }

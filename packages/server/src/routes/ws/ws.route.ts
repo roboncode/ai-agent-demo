@@ -1,8 +1,21 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import type { AppBindings } from "../../app.js";
 import { env } from "../../env.js";
 
-interface WsData {
+export interface WsData {
   authenticated: boolean;
+}
+
+// Allowlisted endpoint prefixes for WS routing
+const ALLOWED_ENDPOINT_PREFIXES = [
+  "/api/agents/",
+  "/api/generate/",
+  "/api/generate",
+  "/api/tools/",
+];
+
+function isAllowedEndpoint(endpoint: string): boolean {
+  return ALLOWED_ENDPOINT_PREFIXES.some((prefix) => endpoint.startsWith(prefix));
 }
 
 /**
@@ -15,13 +28,18 @@ interface WsData {
  *  4. Server streams { event: "text-delta", data: "..." } messages
  *  5. After "done" event, server closes the connection
  */
-export function createWebSocketHandler(app: OpenAPIHono) {
+export function createWebSocketHandler(app: OpenAPIHono<AppBindings>) {
   async function handleRequest(
     ws: { send: (msg: string) => void; close: () => void },
     endpoint: string,
     body: Record<string, unknown>,
   ) {
     try {
+      if (!isAllowedEndpoint(endpoint)) {
+        ws.send(JSON.stringify({ type: "error", error: "Endpoint not allowed" }));
+        ws.close();
+        return;
+      }
       // In-process fetch — no network hop
       const internalReq = new Request(`http://localhost${endpoint}`, {
         method: "POST",

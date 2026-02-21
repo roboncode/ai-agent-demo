@@ -55,6 +55,28 @@ export function extractUsage(
 }
 
 /**
+ * Build a UsageInfo from a streaming result's awaited `usage` promise.
+ * Use this instead of inline-constructing UsageInfo in streaming handlers.
+ */
+export function extractStreamUsage(
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number; raw?: { cost?: number } } | undefined,
+  startTime: number,
+): UsageInfo {
+  const inputTokens = usage?.inputTokens ?? 0;
+  const outputTokens = usage?.outputTokens ?? 0;
+  const totalTokens = usage?.totalTokens ?? (inputTokens + outputTokens);
+  const rawCost = usage?.raw?.cost;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cost: typeof rawCost === "number" ? rawCost : null,
+    durationMs: Math.round(performance.now() - startTime),
+  };
+}
+
+/**
  * Merge multiple UsageInfo objects into one (for task agent aggregation).
  */
 export function mergeUsage(...usages: UsageInfo[]): UsageInfo {

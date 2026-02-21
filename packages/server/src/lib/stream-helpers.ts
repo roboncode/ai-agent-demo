@@ -1,7 +1,7 @@
 import { streamSSE } from "hono/streaming";
 import type { Context } from "hono";
 import { streamText, stepCountIs } from "ai";
-import { getModel } from "./ai-provider.js";
+import { getModel, extractStreamUsage } from "./ai-provider.js";
 
 interface AgentStreamConfig {
   system: string;
@@ -56,10 +56,8 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
       }
     }
 
-    // Await streaming promises for usage
     const usage = await result.usage;
-    const durationMs = Math.round(performance.now() - startTime);
-    const rawCost = usage?.raw?.cost;
+    const usageInfo = extractStreamUsage(usage, startTime);
 
     await stream.writeSSE({
       id: String(id++),
@@ -67,15 +65,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
       data: JSON.stringify({
         toolsUsed: [...toolsUsed],
         conversationId: config.conversationId,
-        usage: {
-          inputTokens: usage?.inputTokens ?? 0,
-          outputTokens: usage?.outputTokens ?? 0,
-          totalTokens:
-            usage?.totalTokens ??
-            (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0),
-          cost: typeof rawCost === "number" ? rawCost : null,
-          durationMs,
-        },
+        usage: usageInfo,
         ...config.extraDoneData,
       }),
     });

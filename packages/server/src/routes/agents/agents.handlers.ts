@@ -1,105 +1,60 @@
 import type { Context } from "hono";
-import { generateText, generateObject, streamText, stepCountIs, tool } from "ai";
-import { z } from "zod";
+import { generateObject, streamText, stepCountIs } from "ai";
 import { streamSSE } from "hono/streaming";
 import { streamAgentResponse } from "../../lib/stream-helpers.js";
-import { getModel, extractUsage, mergeUsage, type UsageInfo } from "../../lib/ai-provider.js";
+import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo } from "../../lib/ai-provider.js";
 import { WEATHER_AGENT_CONFIG } from "../../agents/weather-agent.js";
 import { HACKERNEWS_AGENT_CONFIG } from "../../agents/hackernews-agent.js";
 import { KNOWLEDGE_AGENT_CONFIG } from "../../agents/knowledge-agent.js";
 import { SUPERVISOR_AGENT_CONFIG } from "../../agents/supervisor-agent.js";
 import { MEMORY_AGENT_CONFIG } from "../../agents/memory-agent.js";
 import { CODING_AGENT_CONFIG } from "../../agents/coding-agent.js";
+import { COMPACT_AGENT_CONFIG } from "../../agents/compact-agent.js";
 import {
   runHumanInLoopAgent,
   approveAction,
 } from "../../agents/human-in-loop-agent.js";
-import { runWeatherAgent } from "../../agents/weather-agent.js";
-import { runHackernewsAgent } from "../../agents/hackernews-agent.js";
-import { runKnowledgeAgent } from "../../agents/knowledge-agent.js";
 import { runRecipeAgent } from "../../agents/recipe-agent.js";
-import { runGuardrailsAgent, GUARDRAILS_CONFIG } from "../../agents/guardrails-agent.js";
-import { COMPACT_AGENT_CONFIG } from "../../agents/compact-agent.js";
+import { GUARDRAILS_CONFIG } from "../../agents/guardrails-agent.js";
+import {
+  TASK_AGENT_SYSTEM_PROMPT,
+  createTaskTool,
+  collectTasksFromSteps,
+} from "../../agents/task-agent.js";
+import { executeTask } from "../../agents/execute-task.js";
 
-function conversationId(existing?: string) {
+function generateConversationId(existing?: string) {
   return existing ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// --- Simple streaming agents ---
+// --- Stream handler factory for simple agents ---
 
-export async function handleWeatherAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...WEATHER_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
+interface AgentConfig {
+  system: string;
+  tools: Record<string, any>;
 }
 
-export async function handleHackernewsAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...HACKERNEWS_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
+function makeStreamHandler(config: AgentConfig) {
+  return async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    return streamAgentResponse(c, {
+      ...config,
+      prompt: message,
+      model,
+      conversationId: generateConversationId(cid),
+    });
+  };
 }
 
-export async function handleKnowledgeAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...KNOWLEDGE_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
-}
+export const handleWeatherAgent = makeStreamHandler(WEATHER_AGENT_CONFIG);
+export const handleHackernewsAgent = makeStreamHandler(HACKERNEWS_AGENT_CONFIG);
+export const handleKnowledgeAgent = makeStreamHandler(KNOWLEDGE_AGENT_CONFIG);
+export const handleSupervisorAgent = makeStreamHandler(SUPERVISOR_AGENT_CONFIG);
+export const handleMemoryAgent = makeStreamHandler(MEMORY_AGENT_CONFIG);
+export const handleCodingAgent = makeStreamHandler(CODING_AGENT_CONFIG);
+export const handleCompactAgent = makeStreamHandler(COMPACT_AGENT_CONFIG);
 
-export async function handleSupervisorAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...SUPERVISOR_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
-}
-
-export async function handleMemoryAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...MEMORY_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
-}
-
-export async function handleCodingAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...CODING_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
-}
-
-// --- Compact agent (no tools, pure text) ---
-
-export async function handleCompactAgent(c: Context) {
-  const { message, conversationId: cid, model } = await c.req.json();
-  return streamAgentResponse(c, {
-    ...COMPACT_AGENT_CONFIG,
-    prompt: message,
-    model,
-    conversationId: conversationId(cid),
-  });
-}
-
-// --- Human-in-loop (stays JSON) ---
+// --- Human-in-loop (JSON) ---
 
 export async function handleHumanInLoopAgent(c: Context) {
   const { message, model } = await c.req.json();
@@ -117,7 +72,7 @@ export async function handleHumanInLoopApprove(c: Context) {
 
 export async function handleHumanInLoopAgentStream(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
-  const convId = conversationId(cid);
+  const convId = generateConversationId(cid);
 
   return streamSSE(c, async (stream) => {
     let id = 0;
@@ -130,7 +85,6 @@ export async function handleHumanInLoopAgentStream(c: Context) {
 
     const result = await runHumanInLoopAgent(message, model);
 
-    // Emit tool-call events for each proposed action
     for (const action of result.pendingActions) {
       await stream.writeSSE({
         id: String(id++),
@@ -139,7 +93,6 @@ export async function handleHumanInLoopAgentStream(c: Context) {
       });
     }
 
-    // Emit proposal event with action details for the approval step
     await stream.writeSSE({
       id: String(id++),
       event: "proposal",
@@ -160,27 +113,28 @@ export async function handleHumanInLoopAgentStream(c: Context) {
   });
 }
 
-// --- Structured output agent (JSON, not SSE) ---
+// --- Structured output agent (JSON) ---
 
 export async function handleRecipeAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
   const result = await runRecipeAgent(message, model);
-  return c.json({ ...result, conversationId: conversationId(cid) }, 200);
+  return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
 }
 
-// --- Guardrails agent (JSON, not SSE) ---
+// --- Guardrails agent (JSON) ---
 
 export async function handleGuardrailsAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
+  const { runGuardrailsAgent } = await import("../../agents/guardrails-agent.js");
   const result = await runGuardrailsAgent(message, model);
-  return c.json({ ...result, conversationId: conversationId(cid) }, 200);
+  return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
 }
 
 // --- Guardrails agent (SSE stream) ---
 
 export async function handleGuardrailsAgentStream(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
-  const convId = conversationId(cid);
+  const convId = generateConversationId(cid);
   const overallStart = performance.now();
   const aiModel = getModel(model);
   const { classificationSchema, classificationPrompt, advicePrompt } = GUARDRAILS_CONFIG;
@@ -211,7 +165,6 @@ export async function handleGuardrailsAgentStream(c: Context) {
       data: JSON.stringify({ allowed, category, reason }),
     });
 
-    // If blocked, emit done immediately
     if (!allowed) {
       await stream.writeSSE({
         id: String(id++),
@@ -247,16 +200,9 @@ export async function handleGuardrailsAgentStream(c: Context) {
     }
 
     const adviceUsage = await adviceResult.usage;
-    const adviceDurationMs = Math.round(performance.now() - adviceStart);
-    const rawCost = adviceUsage?.raw?.cost;
+    const adviceUsageInfo = extractStreamUsage(adviceUsage, adviceStart);
 
-    const totalUsage = mergeUsage(classifyUsage, {
-      inputTokens: adviceUsage?.inputTokens ?? 0,
-      outputTokens: adviceUsage?.outputTokens ?? 0,
-      totalTokens: adviceUsage?.totalTokens ?? ((adviceUsage?.inputTokens ?? 0) + (adviceUsage?.outputTokens ?? 0)),
-      cost: typeof rawCost === "number" ? rawCost : null,
-      durationMs: adviceDurationMs,
-    });
+    const totalUsage = mergeUsage(classifyUsage, adviceUsageInfo);
     totalUsage.durationMs = Math.round(performance.now() - overallStart);
 
     await stream.writeSSE({
@@ -269,87 +215,33 @@ export async function handleGuardrailsAgentStream(c: Context) {
 
 // --- Task agent (custom hybrid streaming) ---
 
-async function executeTask(
-  agent: string,
-  query: string
-): Promise<{ agent: string; query: string; result: { response: string; toolsUsed: string[]; usage?: UsageInfo } }> {
-  let result: { response: string; toolsUsed: string[]; usage?: UsageInfo };
-
-  switch (agent) {
-    case "weather":
-      result = await runWeatherAgent(query);
-      break;
-    case "hackernews":
-      result = await runHackernewsAgent(query);
-      break;
-    case "knowledge":
-      result = await runKnowledgeAgent(query);
-      break;
-    default:
-      result = { response: `Unknown agent: ${agent}`, toolsUsed: [] };
-  }
-
-  return { agent, query, result };
-}
-
 export async function handleTaskAgent(c: Context) {
   const { message, conversationId: cid, model } = await c.req.json();
-  const convId = conversationId(cid);
+  const convId = generateConversationId(cid);
   const overallStart = performance.now();
 
   return streamSSE(c, async (stream) => {
     let id = 0;
 
-    // Phase 1: Planning (non-streaming)
+    // Phase 1: Planning
     await stream.writeSSE({
       id: String(id++),
       event: "status",
       data: JSON.stringify({ phase: "planning" }),
     });
 
-    const createTaskTool = tool({
-      description: "Create a sub-task to be delegated to a specialist agent. Tasks run in parallel.",
-      inputSchema: z.object({
-        agent: z.enum(["weather", "hackernews", "knowledge"]).describe("The specialist agent to handle this task"),
-        query: z.string().describe("The specific query for this task"),
-      }),
-      execute: async ({ agent, query }) => ({ agent, query, status: "queued" }),
-    });
-
     const planStart = performance.now();
+    const { generateText } = await import("ai");
     const planResult = await generateText({
       model: getModel(model),
-      system: `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
-
-When you receive a complex query that spans multiple domains:
-1. Analyze what information is needed
-2. Create individual tasks using the createTask tool for each distinct sub-query
-3. Tasks will be executed in parallel for efficiency
-
-Available agents for tasks:
-- weather: Weather information
-- hackernews: Hacker News stories and tech news
-- knowledge: Movie information and recommendations
-
-Create one task per distinct information need. Be specific in your task queries.`,
+      system: TASK_AGENT_SYSTEM_PROMPT,
       prompt: message,
       tools: { createTask: createTaskTool },
       stopWhen: stepCountIs(5),
     });
     const planUsage = extractUsage(planResult, planStart);
 
-    // Collect task proposals
-    const tasks: { agent: string; query: string }[] = [];
-    for (const step of planResult.steps) {
-      for (const tc of step.toolCalls) {
-        if (tc.toolName === "createTask" && (tc as any).input) {
-          const input = (tc as any).input as { agent?: string; query?: string };
-          if (input.agent && input.query) {
-            tasks.push({ agent: input.agent, query: input.query });
-          }
-        }
-      }
-    }
+    const tasks = collectTasksFromSteps(planResult.steps);
 
     if (tasks.length === 0) {
       await stream.writeSSE({
@@ -384,7 +276,6 @@ Create one task per distinct information need. Be specific in your task queries.
       tasks.map((task) => executeTask(task.agent, task.query))
     );
 
-    // Emit tool-result events for each completed sub-task
     for (const r of results) {
       await stream.writeSSE({
         id: String(id++),
@@ -424,21 +315,13 @@ Please synthesize these results into a coherent, comprehensive response for the 
     }
 
     const synthesisUsage = await synthesisResult.usage;
-    const synthDurationMs = Math.round(performance.now() - synthesisStart);
+    const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
 
     // Aggregate usage
     const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
     const subAgentUsages = results
       .map((r) => r.result.usage)
       .filter((u): u is UsageInfo => !!u);
-
-    const synthUsageInfo: UsageInfo = {
-      inputTokens: synthesisUsage?.inputTokens ?? 0,
-      outputTokens: synthesisUsage?.outputTokens ?? 0,
-      totalTokens: synthesisUsage?.totalTokens ?? ((synthesisUsage?.inputTokens ?? 0) + (synthesisUsage?.outputTokens ?? 0)),
-      cost: typeof synthesisUsage?.raw?.cost === "number" ? synthesisUsage.raw.cost : null,
-      durationMs: synthDurationMs,
-    };
 
     const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
     totalUsage.durationMs = Math.round(performance.now() - overallStart);

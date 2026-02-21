@@ -1,6 +1,6 @@
-import { generateText, tool, stepCountIs } from "ai";
+import { tool } from "ai";
 import { z } from "zod";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import {
   saveMemory,
   recallMemory,
@@ -19,8 +19,6 @@ When the user asks about something they previously told you:
 3. Respond based on what you find
 
 Be proactive about saving relevant preferences, facts, and context the user shares.`;
-
-// Tools defined below, config exported after tool definitions
 
 const saveMemoryTool = tool({
   description: "Save a piece of information to persistent memory",
@@ -69,27 +67,5 @@ export const MEMORY_AGENT_CONFIG = {
   },
 };
 
-export async function runMemoryAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: {
-      saveMemory: saveMemoryTool,
-      recallMemory: recallMemoryTool,
-      listMemories: listMemoriesTool,
-    },
-    stopWhen: stepCountIs(5),
-  });
-
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
-
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+export const runMemoryAgent = (message: string, model?: string) =>
+  runAgent(MEMORY_AGENT_CONFIG, message, model);
