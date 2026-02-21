@@ -32,3 +32,5 @@ export {
   movieSearchTool,
   movieDetailTool,
 };
+
+export { toolRegistry } from "../registry/tool-registry.js";

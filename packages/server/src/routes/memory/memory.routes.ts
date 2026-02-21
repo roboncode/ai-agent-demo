@@ -1,24 +1,24 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { createRouter } from "../../app.js";
-import { memoryEntrySchema } from "./memory.schemas.js";
+import { memoryEntrySchema, memorySaveSchema } from "./memory.schemas.js";
 import * as handlers from "./memory.handlers.js";
 
 const router = createRouter();
 
-// GET / - List all memories
+// GET / — List all memory namespaces
 router.openapi(
   createRoute({
     method: "get",
     path: "/",
     tags: ["Memory"],
-    summary: "List all stored memories",
+    summary: "List all memory namespaces",
     responses: {
       200: {
-        description: "All memories",
+        description: "All namespaces",
         content: {
           "application/json": {
             schema: z.object({
-              memories: z.array(memoryEntrySchema),
+              namespaces: z.array(z.string()),
               count: z.number(),
             }),
           },
@@ -26,18 +26,73 @@ router.openapi(
       },
     },
   }),
-  handlers.handleListMemories
+  handlers.handleListNamespaces,
 );
 
-// GET /:id - Get specific memory
+// GET /:id — List all entries in a namespace
 router.openapi(
   createRoute({
     method: "get",
     path: "/{id}",
     tags: ["Memory"],
-    summary: "Get a specific memory by key",
+    summary: "List all entries in a namespace",
     request: {
-      params: z.object({ id: z.string().openapi({ example: "user_name" }) }),
+      params: z.object({ id: z.string().openapi({ example: "user-123" }) }),
+    },
+    responses: {
+      200: {
+        description: "Namespace entries",
+        content: {
+          "application/json": {
+            schema: z.object({
+              entries: z.array(memoryEntrySchema),
+              count: z.number(),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  handlers.handleListEntries,
+);
+
+// POST /:id — Save entry to namespace
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/{id}",
+    tags: ["Memory"],
+    summary: "Save a memory entry",
+    request: {
+      params: z.object({ id: z.string().openapi({ example: "user-123" }) }),
+      body: {
+        content: { "application/json": { schema: memorySaveSchema } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Saved entry",
+        content: {
+          "application/json": { schema: memoryEntrySchema },
+        },
+      },
+    },
+  }),
+  handlers.handleSaveEntry,
+);
+
+// GET /:id/:key — Get specific entry
+router.openapi(
+  createRoute({
+    method: "get",
+    path: "/{id}/{key}",
+    tags: ["Memory"],
+    summary: "Get a specific memory entry",
+    request: {
+      params: z.object({
+        id: z.string().openapi({ example: "user-123" }),
+        key: z.string().openapi({ example: "user_name" }),
+      }),
     },
     responses: {
       200: {
@@ -47,7 +102,7 @@ router.openapi(
         },
       },
       404: {
-        description: "Memory not found",
+        description: "Entry not found",
         content: {
           "application/json": {
             schema: z.object({ error: z.string() }),
@@ -56,60 +111,66 @@ router.openapi(
       },
     },
   }),
-  handlers.handleGetMemory
+  handlers.handleGetEntry,
 );
 
-// DELETE /:id - Delete specific memory
+// DELETE /:id/:key — Delete specific entry
+router.openapi(
+  createRoute({
+    method: "delete",
+    path: "/{id}/{key}",
+    tags: ["Memory"],
+    summary: "Delete a specific memory entry",
+    request: {
+      params: z.object({
+        id: z.string().openapi({ example: "user-123" }),
+        key: z.string().openapi({ example: "user_name" }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Entry deleted",
+        content: {
+          "application/json": {
+            schema: z.object({ deleted: z.boolean(), namespace: z.string(), key: z.string() }),
+          },
+        },
+      },
+      404: {
+        description: "Entry not found",
+        content: {
+          "application/json": {
+            schema: z.object({ error: z.string() }),
+          },
+        },
+      },
+    },
+  }),
+  handlers.handleDeleteEntry,
+);
+
+// DELETE /:id — Clear entire namespace
 router.openapi(
   createRoute({
     method: "delete",
     path: "/{id}",
     tags: ["Memory"],
-    summary: "Delete a specific memory",
+    summary: "Clear all entries in a namespace",
     request: {
-      params: z.object({ id: z.string().openapi({ example: "user_name" }) }),
+      params: z.object({ id: z.string().openapi({ example: "user-123" }) }),
     },
     responses: {
       200: {
-        description: "Memory deleted",
+        description: "Namespace cleared",
         content: {
           "application/json": {
-            schema: z.object({ deleted: z.boolean(), key: z.string() }),
-          },
-        },
-      },
-      404: {
-        description: "Memory not found",
-        content: {
-          "application/json": {
-            schema: z.object({ error: z.string() }),
+            schema: z.object({ cleared: z.boolean(), namespace: z.string() }),
           },
         },
       },
     },
   }),
-  handlers.handleDeleteMemory
-);
-
-// DELETE / - Clear all memories
-router.openapi(
-  createRoute({
-    method: "delete",
-    path: "/",
-    tags: ["Memory"],
-    summary: "Clear all memories",
-    responses: {
-      200: {
-        description: "All memories cleared",
-        content: {
-          "application/json": {
-            schema: z.object({ cleared: z.boolean() }),
-          },
-        },
-      },
-    },
-  }),
-  handlers.handleClearMemories
+  handlers.handleClearNamespace,
 );
 
 export default router;

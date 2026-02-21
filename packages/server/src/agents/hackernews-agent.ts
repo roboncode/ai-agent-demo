@@ -3,6 +3,8 @@ import {
   hackernewsTopStoriesTool,
   hackernewsStoryDetailTool,
 } from "../tools/hackernews.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a Hacker News analyst agent. Your job is to help users discover and understand trending tech stories.
 
@@ -24,3 +26,15 @@ export const HACKERNEWS_AGENT_CONFIG = {
 
 export const runHackernewsAgent = (message: string, model?: string) =>
   runAgent(HACKERNEWS_AGENT_CONFIG, message, model);
+
+// Self-registration
+agentRegistry.register({
+  name: "hackernews",
+  description: "Hacker News analyst agent for trending stories and tech news",
+  toolNames: ["getTopStories", "getStoryDetail"],
+  type: "stream",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: makeRegistryStreamHandler({
+    tools: { getTopStories: hackernewsTopStoriesTool, getStoryDetail: hackernewsStoryDetailTool },
+  }),
+});

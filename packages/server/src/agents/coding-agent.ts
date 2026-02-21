@@ -2,6 +2,8 @@ import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import vm from "node:vm";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a coding agent that writes and executes JavaScript code to solve problems.
 
@@ -113,3 +115,13 @@ export async function runCodingAgent(message: string, model?: string) {
     usage: extractUsage(result, startTime),
   };
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "coding",
+  description: "Code generation and execution agent with sandboxed JavaScript",
+  toolNames: ["executeCode"],
+  type: "stream",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: makeRegistryStreamHandler({ tools: { executeCode: executeCodeTool } }),
+});

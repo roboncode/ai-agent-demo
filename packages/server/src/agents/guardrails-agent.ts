@@ -1,6 +1,10 @@
-import { generateObject, generateText } from "ai";
+import { generateObject, generateText, streamText } from "ai";
 import { z } from "zod";
-import { getModel, extractUsage, mergeUsage } from "../lib/ai-provider.js";
+import { streamSSE } from "hono/streaming";
+import type { Context } from "hono";
+import { getModel, extractUsage, extractStreamUsage, mergeUsage } from "../lib/ai-provider.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { generateConversationId } from "../registry/handler-factories.js";
 
 const classificationSchema = z.object({
   allowed: z.boolean().describe("Whether the query is a personal finance question"),
@@ -74,3 +78,75 @@ export const GUARDRAILS_CONFIG = {
   classificationPrompt: CLASSIFICATION_PROMPT,
   advicePrompt: FINANCE_ADVISOR_PROMPT,
 };
+
+// Self-registration
+agentRegistry.register({
+  name: "guardrails",
+  description: "Guardrails finance advisor: classifies input then generates advice for allowed queries",
+  toolNames: [],
+  type: "json",
+  defaultSystem: CLASSIFICATION_PROMPT,
+  handler: async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const result = await runGuardrailsAgent(message, model);
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  },
+  subRoutes: [
+    {
+      subPath: "/stream",
+      method: "post",
+      summary: "Guardrails finance advisor agent (streaming)",
+      description: "SSE variant: emits classification event, then streams advice text via text-delta",
+      type: "stream",
+      handler: async (c: Context) => {
+        const { message, conversationId: cid, model } = await c.req.json();
+        const convId = generateConversationId(cid);
+        const overallStart = performance.now();
+        const aiModel = getModel(model);
+
+        return streamSSE(c, async (stream) => {
+          let id = 0;
+
+          await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "classifying" }) });
+
+          const classifyStart = performance.now();
+          const classification = await generateObject({
+            model: aiModel,
+            system: classificationSchema ? CLASSIFICATION_PROMPT : CLASSIFICATION_PROMPT,
+            prompt: message,
+            schema: classificationSchema,
+          });
+          const classifyUsage = extractUsage(classification, classifyStart);
+          const { allowed, category, reason } = classification.object;
+
+          await stream.writeSSE({ id: String(id++), event: "classification", data: JSON.stringify({ allowed, category, reason }) });
+
+          if (!allowed) {
+            await stream.writeSSE({
+              id: String(id++),
+              event: "done",
+              data: JSON.stringify({ conversationId: convId, usage: { ...classifyUsage, durationMs: Math.round(performance.now() - overallStart) } }),
+            });
+            return;
+          }
+
+          await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "generating advice" }) });
+
+          const adviceStart = performance.now();
+          const adviceResult = streamText({ model: aiModel, system: FINANCE_ADVISOR_PROMPT, prompt: message });
+
+          for await (const text of adviceResult.textStream) {
+            await stream.writeSSE({ id: String(id++), event: "text-delta", data: JSON.stringify({ text }) });
+          }
+
+          const adviceUsage = await adviceResult.usage;
+          const adviceUsageInfo = extractStreamUsage(adviceUsage, adviceStart);
+          const totalUsage = mergeUsage(classifyUsage, adviceUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await stream.writeSSE({ id: String(id++), event: "done", data: JSON.stringify({ conversationId: convId, usage: totalUsage }) });
+        });
+      },
+    },
+  ],
+});

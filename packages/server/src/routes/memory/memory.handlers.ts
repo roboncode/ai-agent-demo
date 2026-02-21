@@ -1,35 +1,53 @@
 import type { Context } from "hono";
 import {
-  listMemories,
-  recallMemory,
-  deleteMemory,
-  clearMemories,
+  listNamespaces,
+  listEntries,
+  saveEntry,
+  getEntry,
+  deleteEntry,
+  clearNamespace,
 } from "../../storage/memory-store.js";
 
-export async function handleListMemories(c: Context) {
-  const memories = await listMemories();
-  return c.json({ memories, count: memories.length }, 200);
+export async function handleListNamespaces(c: Context) {
+  const namespaces = await listNamespaces();
+  return c.json({ namespaces, count: namespaces.length }, 200);
 }
 
-export async function handleGetMemory(c: Context) {
+export async function handleListEntries(c: Context) {
   const id = c.req.param("id");
-  const memory = await recallMemory(id);
-  if (!memory) {
-    return c.json({ error: "Memory not found" }, 404);
+  const entries = await listEntries(id);
+  return c.json({ entries, count: entries.length }, 200);
+}
+
+export async function handleSaveEntry(c: Context) {
+  const id = c.req.param("id");
+  const { key, value, context } = await c.req.json();
+  const entry = await saveEntry(id, key, value, context ?? "");
+  return c.json(entry, 200);
+}
+
+export async function handleGetEntry(c: Context) {
+  const id = c.req.param("id");
+  const key = c.req.param("key");
+  const entry = await getEntry(id, key);
+  if (!entry) {
+    return c.json({ error: "Entry not found" }, 404);
   }
-  return c.json(memory, 200);
+  return c.json(entry, 200);
 }
 
-export async function handleDeleteMemory(c: Context) {
+export async function handleDeleteEntry(c: Context) {
   const id = c.req.param("id");
-  const deleted = await deleteMemory(id);
+  const key = c.req.param("key");
+  const deleted = await deleteEntry(id, key);
   if (!deleted) {
-    return c.json({ error: "Memory not found" }, 404);
+    return c.json({ error: "Entry not found" }, 404);
   }
-  return c.json({ deleted: true, key: id }, 200);
+  return c.json({ deleted: true, namespace: id, key }, 200);
 }
 
-export async function handleClearMemories(c: Context) {
-  await clearMemories();
-  return c.json({ cleared: true }, 200);
+export async function handleClearNamespace(c: Context) {
+  const id = c.req.param("id");
+  await clearNamespace(id);
+  return c.json({ cleared: true, namespace: id }, 200);
 }

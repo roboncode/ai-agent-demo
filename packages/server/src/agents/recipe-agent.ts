@@ -1,6 +1,9 @@
 import { generateObject } from "ai";
 import { z } from "zod";
+import type { Context } from "hono";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { generateConversationId } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a professional chef and recipe creator. When given a food topic or request, generate a complete, well-structured recipe.
 
@@ -55,3 +58,17 @@ export async function runRecipeAgent(message: string, model?: string) {
     usage,
   };
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "recipe",
+  description: "Structured output recipe agent using generateObject with Zod schema",
+  toolNames: [],
+  type: "json",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const result = await runRecipeAgent(message, model);
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  },
+});

@@ -1,5 +1,7 @@
 import { runAgent } from "../lib/run-agent.js";
 import { movieSearchTool, movieDetailTool } from "../tools/movies.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a movie knowledge and recommendation agent. Your job is to help users discover movies, get details, and receive personalized recommendations.
 
@@ -21,3 +23,15 @@ export const KNOWLEDGE_AGENT_CONFIG = {
 
 export const runKnowledgeAgent = (message: string, model?: string) =>
   runAgent(KNOWLEDGE_AGENT_CONFIG, message, model);
+
+// Self-registration
+agentRegistry.register({
+  name: "knowledge",
+  description: "Movie knowledge and recommendation agent via TMDB",
+  toolNames: ["searchMovies", "getMovieDetail"],
+  type: "stream",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: makeRegistryStreamHandler({
+    tools: { searchMovies: movieSearchTool, getMovieDetail: movieDetailTool },
+  }),
+});

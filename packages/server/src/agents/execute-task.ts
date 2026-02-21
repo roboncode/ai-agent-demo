@@ -1,7 +1,5 @@
 import type { UsageInfo } from "../lib/ai-provider.js";
-import { runWeatherAgent } from "./weather-agent.js";
-import { runHackernewsAgent } from "./hackernews-agent.js";
-import { runKnowledgeAgent } from "./knowledge-agent.js";
+import { agentRegistry } from "../registry/agent-registry.js";
 
 export interface TaskResult {
   agent: string;
@@ -9,25 +7,47 @@ export interface TaskResult {
   result: { response: string; toolsUsed: string[]; usage?: UsageInfo };
 }
 
+// Map of agent names to their runAgent functions (lazy-loaded)
+const runFunctions = new Map<string, (message: string, model?: string) => Promise<any>>();
+
+async function getRunFunction(agentName: string) {
+  if (runFunctions.has(agentName)) return runFunctions.get(agentName)!;
+
+  // Dynamic import based on agent name
+  const moduleMap: Record<string, { path: string; fn: string }> = {
+    weather: { path: "./weather-agent.js", fn: "runWeatherAgent" },
+    hackernews: { path: "./hackernews-agent.js", fn: "runHackernewsAgent" },
+    knowledge: { path: "./knowledge-agent.js", fn: "runKnowledgeAgent" },
+    coding: { path: "./coding-agent.js", fn: "runCodingAgent" },
+    compact: { path: "./compact-agent.js", fn: "runCompactAgent" },
+    memory: { path: "./memory-agent.js", fn: "runMemoryAgent" },
+  };
+
+  const entry = moduleMap[agentName];
+  if (!entry) return null;
+
+  const mod = await import(entry.path);
+  const fn = mod[entry.fn];
+  runFunctions.set(agentName, fn);
+  return fn;
+}
+
 export async function executeTask(
   agent: string,
   query: string,
 ): Promise<TaskResult> {
-  let result: { response: string; toolsUsed: string[]; usage?: UsageInfo };
-
-  switch (agent) {
-    case "weather":
-      result = await runWeatherAgent(query);
-      break;
-    case "hackernews":
-      result = await runHackernewsAgent(query);
-      break;
-    case "knowledge":
-      result = await runKnowledgeAgent(query);
-      break;
-    default:
-      result = { response: `Unknown agent: ${agent}`, toolsUsed: [] };
+  // Check registry first
+  const registered = agentRegistry.get(agent);
+  if (!registered) {
+    return { agent, query, result: { response: `Unknown agent: ${agent}`, toolsUsed: [] } };
   }
 
-  return { agent, query, result };
+  // Try to use the run function for JSON-style execution
+  const runFn = await getRunFunction(agent);
+  if (runFn) {
+    const result = await runFn(query);
+    return { agent, query, result };
+  }
+
+  return { agent, query, result: { response: `Agent "${agent}" does not support task execution`, toolsUsed: [] } };
 }

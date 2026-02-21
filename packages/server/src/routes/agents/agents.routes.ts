@@ -1,13 +1,19 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { createRouter } from "../../app.js";
-import { agentRequestSchema, approveRequestSchema } from "./agents.schemas.js";
-import * as handlers from "./agents.handlers.js";
+import { agentRegistry } from "../../registry/agent-registry.js";
+import { agentRequestSchema, agentPatchSchema } from "./agents.schemas.js";
+import { saveOverride, deleteOverride } from "../../storage/prompt-store.js";
+import { loadMemoriesForIds } from "../../storage/memory-store.js";
 
 const router = createRouter();
 
-const agentResponse = {
+const agentBody = {
+  content: { "application/json": { schema: agentRequestSchema } },
+};
+
+const jsonResponse = {
   200: {
-    description: "Agent response (JSON)",
+    description: "JSON response",
     content: { "application/json": { schema: z.any() } },
   },
 };
@@ -19,213 +25,246 @@ const sseResponse = {
   },
 };
 
-const agentBody = {
-  content: { "application/json": { schema: agentRequestSchema } },
-};
-
-// Weather agent
+// GET / — List all registered agents
 router.openapi(
   createRoute({
-    method: "post",
-    path: "/weather",
+    method: "get",
+    path: "/",
     tags: ["Agents"],
-    summary: "Weather specialist agent",
-    description: "AI agent specialized in weather queries, using wttr.in data",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleWeatherAgent
-);
-
-// Hackernews agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/hackernews",
-    tags: ["Agents"],
-    summary: "Hacker News analyst agent",
-    description: "AI agent specialized in Hacker News trending stories and tech news",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleHackernewsAgent
-);
-
-// Knowledge agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/knowledge",
-    tags: ["Agents"],
-    summary: "Movie recommender agent",
-    description: "AI agent specialized in movie search, details, and recommendations via TMDB",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleKnowledgeAgent
-);
-
-// Supervisor agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/supervisor",
-    tags: ["Agents"],
-    summary: "Supervisor routing agent",
-    description: "Routes queries to appropriate specialist agents (weather, hackernews, knowledge)",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleSupervisorAgent
-);
-
-// Memory agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/memory",
-    tags: ["Agents"],
-    summary: "Memory-enabled agent",
-    description: "Agent with persistent memory - can save and recall information across conversations",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleMemoryAgent
-);
-
-// Human-in-the-loop agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/human-in-loop",
-    tags: ["Agents"],
-    summary: "Human-in-the-loop agent (propose action)",
-    description: "Agent that proposes actions for human approval. Returns pending actions to approve/reject.",
-    request: { body: agentBody },
-    responses: agentResponse,
-  }),
-  handlers.handleHumanInLoopAgent
-);
-
-// Human-in-the-loop agent — streaming variant
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/human-in-loop/stream",
-    tags: ["Agents"],
-    summary: "Human-in-the-loop agent (streaming)",
-    description:
-      "SSE variant: emits status, tool-call for each proposed action, proposal with IDs, then done",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleHumanInLoopAgentStream
-);
-
-// Approve/reject pending action
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/human-in-loop/approve",
-    tags: ["Agents"],
-    summary: "Approve or reject a pending action",
-    description: "Approve or reject an action proposed by the human-in-the-loop agent",
-    request: {
-      body: {
-        content: { "application/json": { schema: approveRequestSchema } },
+    summary: "List all registered agents",
+    description: "Returns metadata for all registered agents",
+    responses: {
+      200: {
+        description: "List of agents",
+        content: {
+          "application/json": {
+            schema: z.object({
+              agents: z.array(
+                z.object({
+                  name: z.string(),
+                  description: z.string(),
+                  type: z.string(),
+                  toolNames: z.array(z.string()),
+                  hasPromptOverride: z.boolean(),
+                  subRoutes: z.array(z.string()).optional(),
+                }),
+              ),
+              count: z.number(),
+            }),
+          },
+        },
       },
     },
-    responses: agentResponse,
   }),
-  handlers.handleHumanInLoopApprove
+  (c) => {
+    const agents = agentRegistry.list().map((a) => ({
+      name: a.name,
+      description: a.description,
+      type: a.type,
+      toolNames: a.toolNames,
+      hasPromptOverride: agentRegistry.hasPromptOverride(a.name),
+      subRoutes: a.subRoutes?.map((sr) => `${sr.method.toUpperCase()} /${a.name}${sr.subPath}`),
+    }));
+    return c.json({ agents, count: agents.length });
+  },
 );
 
-// Recipe agent (structured output)
+// GET /:agentName — Get agent details including current system prompt
+router.openapi(
+  createRoute({
+    method: "get",
+    path: "/{agentName}",
+    tags: ["Agents"],
+    summary: "Get agent details",
+    description: "Returns agent metadata and current system prompt",
+    request: {
+      params: z.object({
+        agentName: z.string().openapi({ example: "weather" }),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Agent details",
+        content: {
+          "application/json": {
+            schema: z.object({
+              name: z.string(),
+              description: z.string(),
+              type: z.string(),
+              toolNames: z.array(z.string()),
+              systemPrompt: z.string(),
+              isDefault: z.boolean(),
+            }),
+          },
+        },
+      },
+      404: {
+        description: "Agent not found",
+        content: {
+          "application/json": { schema: z.object({ error: z.string() }) },
+        },
+      },
+    },
+  }),
+  (c) => {
+    const name = c.req.param("agentName");
+    const agent = agentRegistry.get(name);
+    if (!agent) {
+      return c.json({ error: `Agent not found: ${name}` }, 404);
+    }
+    return c.json({
+      name: agent.name,
+      description: agent.description,
+      type: agent.type,
+      toolNames: agent.toolNames,
+      systemPrompt: agentRegistry.getResolvedPrompt(name)!,
+      isDefault: !agentRegistry.hasPromptOverride(name),
+    });
+  },
+);
+
+// PATCH /:agentName — Update system prompt or reset to default
+router.openapi(
+  createRoute({
+    method: "patch",
+    path: "/{agentName}",
+    tags: ["Agents"],
+    summary: "Update agent system prompt",
+    description: "Set a custom system prompt or reset to default",
+    request: {
+      params: z.object({
+        agentName: z.string().openapi({ example: "weather" }),
+      }),
+      body: {
+        content: { "application/json": { schema: agentPatchSchema } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Prompt updated",
+        content: {
+          "application/json": {
+            schema: z.object({
+              name: z.string(),
+              systemPrompt: z.string(),
+              isDefault: z.boolean(),
+            }),
+          },
+        },
+      },
+      404: {
+        description: "Agent not found",
+        content: {
+          "application/json": { schema: z.object({ error: z.string() }) },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const name = c.req.param("agentName");
+    const agent = agentRegistry.get(name);
+    if (!agent) {
+      return c.json({ error: `Agent not found: ${name}` }, 404);
+    }
+
+    const body = await c.req.json();
+
+    if (body.reset) {
+      agentRegistry.resetPrompt(name);
+      await deleteOverride(name);
+    } else if (body.system) {
+      agentRegistry.setPromptOverride(name, body.system);
+      await saveOverride(name, body.system);
+    }
+
+    return c.json({
+      name,
+      systemPrompt: agentRegistry.getResolvedPrompt(name)!,
+      isDefault: !agentRegistry.hasPromptOverride(name),
+    });
+  },
+);
+
+// Dynamic sub-routes — must be registered before the catch-all POST /:agentName
+// We register known sub-route patterns for each agent that has them
+function mountSubRoutes() {
+  for (const agent of agentRegistry.list()) {
+    if (!agent.subRoutes) continue;
+    for (const sub of agent.subRoutes) {
+      const path = `/${agent.name}${sub.subPath}` as `/${string}`;
+      const responses = sub.type === "stream" ? sseResponse : jsonResponse;
+
+      router.openapi(
+        createRoute({
+          method: sub.method,
+          path,
+          tags: ["Agents"],
+          summary: sub.summary,
+          description: sub.description,
+          request: { body: agentBody },
+          responses,
+        }),
+        sub.handler as any,
+      );
+    }
+  }
+}
+
+// POST /:agentName — Dynamic dispatch
 router.openapi(
   createRoute({
     method: "post",
-    path: "/recipe",
+    path: "/{agentName}",
     tags: ["Agents"],
-    summary: "Structured output recipe agent",
-    description: "Uses generateObject with a Zod schema to return a typed recipe JSON object",
-    request: { body: agentBody },
-    responses: agentResponse,
+    summary: "Execute an agent",
+    description: "Dispatches to the named agent. Response type depends on the agent (SSE or JSON).",
+    request: {
+      params: z.object({
+        agentName: z.string().openapi({ example: "weather" }),
+      }),
+      body: agentBody,
+    },
+    responses: {
+      ...sseResponse,
+      404: {
+        description: "Agent not found",
+        content: {
+          "application/json": { schema: z.object({ error: z.string() }) },
+        },
+      },
+    },
   }),
-  handlers.handleRecipeAgent
+  async (c) => {
+    const name = c.req.param("agentName");
+    const agent = agentRegistry.get(name);
+    if (!agent) {
+      return c.json({ error: `Agent not found: ${name}` }, 404);
+    }
+
+    const systemPrompt = agentRegistry.getResolvedPrompt(name)!;
+
+    // Load memory context if memoryIds provided
+    let memoryContext: string | undefined;
+    try {
+      const body = await c.req.json();
+      if (body.memoryIds && Array.isArray(body.memoryIds) && body.memoryIds.length > 0) {
+        const memories = await loadMemoriesForIds(body.memoryIds);
+        if (memories.length > 0) {
+          memoryContext = memories
+            .map((m) => `[${m.namespace}] ${m.key}: ${m.value}`)
+            .join("\n");
+        }
+      }
+    } catch {
+      // body parsing may fail on re-read, that's fine
+    }
+
+    return agent.handler(c, { systemPrompt, memoryContext });
+  },
 );
 
-// Guardrails agent (finance advisor with input validation)
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/guardrails",
-    tags: ["Agents"],
-    summary: "Guardrails finance advisor agent",
-    description:
-      "Two-phase agent: classifies input as finance-related or off-topic, then generates advice only for allowed queries",
-    request: { body: agentBody },
-    responses: agentResponse,
-  }),
-  handlers.handleGuardrailsAgent
-);
-
-// Guardrails agent — streaming variant
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/guardrails/stream",
-    tags: ["Agents"],
-    summary: "Guardrails finance advisor agent (streaming)",
-    description:
-      "SSE variant: emits classification event, then streams advice text via text-delta",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleGuardrailsAgentStream
-);
-
-// Task agent (parallel execution)
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/task",
-    tags: ["Agents"],
-    summary: "Parallel task delegation agent",
-    description:
-      "Breaks complex queries into parallel sub-tasks, delegates to specialist agents, and synthesizes results (streams status + synthesis)",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleTaskAgent
-);
-
-// Compact agent (conversation compaction)
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/compact",
-    tags: ["Agents"],
-    summary: "Conversation compaction agent",
-    description:
-      "Compresses a verbose conversation into a concise summary preserving key facts and context",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleCompactAgent
-);
-
-// Coding agent
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/coding",
-    tags: ["Agents"],
-    summary: "Code generation and execution agent",
-    description: "Agent that writes and executes JavaScript code in a sandboxed environment",
-    request: { body: agentBody },
-    responses: sseResponse,
-  }),
-  handlers.handleCodingAgent
-);
+export function mountAgentRoutes() {
+  mountSubRoutes();
+}
 
 export default router;

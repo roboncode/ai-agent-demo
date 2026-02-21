@@ -1,7 +1,11 @@
-import { generateText, tool, stepCountIs } from "ai";
+import { generateText, tool, stepCountIs, streamText } from "ai";
 import { z } from "zod";
-import { getModel, extractUsage, mergeUsage, type UsageInfo } from "../lib/ai-provider.js";
+import { streamSSE } from "hono/streaming";
+import type { Context } from "hono";
+import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo } from "../lib/ai-provider.js";
 import { executeTask } from "./execute-task.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { generateConversationId } from "../registry/handler-factories.js";
 
 export const TASK_AGENT_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
 
@@ -114,3 +118,84 @@ Please synthesize these results into a coherent, comprehensive response for the 
     usage: totalUsage,
   };
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "task",
+  description: "Parallel task delegation agent that breaks complex queries into sub-tasks",
+  toolNames: ["createTask"],
+  type: "stream",
+  defaultSystem: TASK_AGENT_SYSTEM_PROMPT,
+  handler: async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const convId = generateConversationId(cid);
+    const overallStart = performance.now();
+
+    return streamSSE(c, async (stream) => {
+      let id = 0;
+
+      // Phase 1: Planning
+      await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "planning" }) });
+
+      const planStart = performance.now();
+      const planResult = await generateText({
+        model: getModel(model),
+        system: TASK_AGENT_SYSTEM_PROMPT,
+        prompt: message,
+        tools: { createTask: createTaskTool },
+        stopWhen: stepCountIs(5),
+      });
+      const planUsage = extractUsage(planResult, planStart);
+      const tasks = collectTasksFromSteps(planResult.steps);
+
+      if (tasks.length === 0) {
+        await stream.writeSSE({ id: String(id++), event: "text-delta", data: JSON.stringify({ text: planResult.text || "I couldn't identify any sub-tasks to execute." }) });
+        await stream.writeSSE({
+          id: String(id++),
+          event: "done",
+          data: JSON.stringify({ toolsUsed: [], conversationId: convId, tasks: [], usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } }),
+        });
+        return;
+      }
+
+      // Phase 2: Executing sub-tasks in parallel
+      await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "executing", tasks: tasks.map((t) => ({ agent: t.agent, query: t.query })) }) });
+
+      const results = await Promise.all(tasks.map((task) => executeTask(task.agent, task.query)));
+
+      for (const r of results) {
+        await stream.writeSSE({ id: String(id++), event: "tool-result", data: JSON.stringify({ toolName: `task:${r.agent}`, result: { query: r.query, summary: r.result.response.slice(0, 200) } }) });
+      }
+
+      // Phase 3: Synthesis (streaming)
+      await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "synthesizing" }) });
+
+      const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+      const synthesisStart = performance.now();
+      const synthesisResult = streamText({ model: getModel(model), prompt: synthesisPrompt });
+
+      for await (const text of synthesisResult.textStream) {
+        await stream.writeSSE({ id: String(id++), event: "text-delta", data: JSON.stringify({ text }) });
+      }
+
+      const synthesisUsage = await synthesisResult.usage;
+      const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+      const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+      const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+      const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+      totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+      await stream.writeSSE({
+        id: String(id++),
+        event: "done",
+        data: JSON.stringify({
+          toolsUsed: [...new Set(allToolsUsed)],
+          conversationId: convId,
+          tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+          usage: totalUsage,
+        }),
+      });
+    });
+  },
+});

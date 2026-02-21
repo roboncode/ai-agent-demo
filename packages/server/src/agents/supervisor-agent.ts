@@ -4,6 +4,8 @@ import { getModel, extractUsage } from "../lib/ai-provider.js";
 import { runWeatherAgent } from "./weather-agent.js";
 import { runHackernewsAgent } from "./hackernews-agent.js";
 import { runKnowledgeAgent } from "./knowledge-agent.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
 
@@ -73,3 +75,13 @@ export async function runSupervisorAgent(message: string, model?: string) {
     usage: extractUsage(result, startTime),
   };
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "supervisor",
+  description: "Supervisor routing agent that delegates to specialist agents",
+  toolNames: ["routeToAgent"],
+  type: "stream",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: makeRegistryStreamHandler({ tools: { routeToAgent: routeToAgentTool } }),
+});

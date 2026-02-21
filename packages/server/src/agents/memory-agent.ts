@@ -6,6 +6,8 @@ import {
   recallMemory,
   listMemories,
 } from "../storage/memory-store.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a memory-enabled agent. You can remember information across conversations by saving and recalling memories.
 
@@ -69,3 +71,15 @@ export const MEMORY_AGENT_CONFIG = {
 
 export const runMemoryAgent = (message: string, model?: string) =>
   runAgent(MEMORY_AGENT_CONFIG, message, model);
+
+// Self-registration
+agentRegistry.register({
+  name: "memory",
+  description: "Memory-enabled agent that saves and recalls information across conversations",
+  toolNames: ["saveMemory", "recallMemory", "listMemories"],
+  type: "stream",
+  defaultSystem: SYSTEM_PROMPT,
+  handler: makeRegistryStreamHandler({
+    tools: { saveMemory: saveMemoryTool, recallMemory: recallMemoryTool, listMemories: listMemoriesTool },
+  }),
+});
