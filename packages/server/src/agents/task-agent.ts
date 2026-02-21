@@ -6,6 +6,7 @@ import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo 
 import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
+import { ORCHESTRATOR_AGENTS } from "../lib/delegation-context.js";
 
 const BASE_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
 
@@ -16,11 +17,10 @@ When you receive a complex query that spans multiple domains:
 
 Create one task per distinct information need. Be specific in your task queries.`;
 
-// Agents that should not be delegated to (would cause circular calls or don't support task execution)
-const EXCLUDED_AGENTS = new Set(["supervisor", "task"]);
-
 function getDelegatableAgents() {
-  return agentRegistry.list().filter((a) => !EXCLUDED_AGENTS.has(a.name) && a.tools);
+  return agentRegistry.list().filter(
+    (a) => !ORCHESTRATOR_AGENTS.has(a.name) && a.tools && Object.keys(a.tools).length > 0
+  );
 }
 
 function buildCreateTaskTool() {

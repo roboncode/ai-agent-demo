@@ -5,6 +5,7 @@ import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
 import { streamAgentResponse } from "../lib/stream-helpers.js";
+import { ORCHESTRATOR_AGENTS } from "../lib/delegation-context.js";
 
 const SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
 
@@ -16,11 +17,10 @@ When you receive a query:
 
 Always use the routeToAgent tool - never answer domain questions directly.`;
 
-// Agents that should not be routed to (would cause circular calls or don't support task execution)
-const EXCLUDED_AGENTS = new Set(["supervisor", "task"]);
-
 function getRoutableAgents() {
-  return agentRegistry.list().filter((a) => !EXCLUDED_AGENTS.has(a.name) && a.tools);
+  return agentRegistry.list().filter(
+    (a) => !ORCHESTRATOR_AGENTS.has(a.name) && a.tools && Object.keys(a.tools).length > 0
+  );
 }
 
 function buildRoutingTool() {

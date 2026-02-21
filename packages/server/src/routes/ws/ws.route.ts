@@ -9,7 +9,6 @@ export interface WsData {
 // Allowlisted endpoint prefixes for WS routing
 const ALLOWED_ENDPOINT_PREFIXES = [
   "/api/agents/",
-  "/api/generate/",
   "/api/generate",
   "/api/tools/",
 ];

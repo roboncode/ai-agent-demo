@@ -9,14 +9,15 @@ import * as handlers from "./generate.handlers.js";
 const router = createRouter();
 
 // POST / (mounted at /api/generate)
+// Use ?format=json (default) or ?format=sse
 router.openapi(
   createRoute({
     method: "post",
     path: "/",
-    tags: ["Generation"],
-    summary: "Generate text (non-streaming)",
+    tags: ["RAG"],
+    summary: "Generate text",
     description:
-      "Generate a response from the AI model. Optionally provide tools for the model to use.",
+      "Generate a response from the AI model. Optionally provide tools. Use ?format=sse for streaming.",
     request: {
       body: {
         content: {
@@ -26,42 +27,20 @@ router.openapi(
     },
     responses: {
       200: {
-        description: "Generated response",
+        description: "Generated response (JSON or SSE stream depending on format query param)",
         content: {
           "application/json": { schema: generateResponseSchema },
         },
       },
     },
   }),
-  handlers.handleGenerate
-);
-
-// POST /stream (mounted at /api/generate/stream)
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/stream",
-    tags: ["Generation"],
-    summary: "Generate text (streaming SSE)",
-    description:
-      "Stream a response from the AI model via Server-Sent Events. Events: text-delta, tool-result, done.",
-    request: {
-      body: {
-        content: {
-          "application/json": { schema: generateRequestSchema },
-        },
-      },
-    },
-    responses: {
-      200: {
-        description: "SSE stream of text deltas, tool results, and completion",
-        content: {
-          "text/event-stream": { schema: z.any() },
-        },
-      },
-    },
-  }),
-  handlers.handleGenerateStream
+  (c) => {
+    const format = (c.req.query("format") ?? "json") as "json" | "sse";
+    if (format === "sse") {
+      return handlers.handleGenerateStream(c);
+    }
+    return handlers.handleGenerate(c);
+  }
 );
 
 export default router;

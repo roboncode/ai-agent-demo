@@ -2,22 +2,37 @@ import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { generateText, streamText, stepCountIs } from "ai";
 import { getModel, extractUsage, extractStreamUsage } from "../../lib/ai-provider.js";
-import { getToolsByNames, type ToolName } from "../../tools/index.js";
+import { allTools, getToolsByNames, type ToolName } from "../../tools/index.js";
 import { env } from "../../env.js";
+
+const VALID_TOOL_NAMES = new Set(Object.keys(allTools));
+
+function validateToolNames(names: string[]): string[] {
+  return names.filter((n) => !VALID_TOOL_NAMES.has(n));
+}
 
 export async function handleGenerate(c: Context) {
   const body = await c.req.json();
   const { prompt, systemPrompt, model, tools: toolNames, maxSteps } = body;
 
-  const selectedTools = toolNames?.length ? getToolsByNames(toolNames) : undefined;
+  if (toolNames?.length) {
+    const unknown = validateToolNames(toolNames);
+    if (unknown.length > 0) {
+      return c.json({ error: `Unknown tool(s): ${unknown.join(", ")}` }, 400);
+    }
+  }
+
+  const tools = toolNames?.length
+    ? getToolsByNames(toolNames as ToolName[])
+    : undefined;
 
   const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: systemPrompt,
     prompt,
-    tools: selectedTools,
-    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
+    tools,
+    stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   const toolResults = result.steps
@@ -37,15 +52,24 @@ export async function handleGenerateStream(c: Context) {
   const body = await c.req.json();
   const { prompt, systemPrompt, model, tools: toolNames, maxSteps } = body;
 
-  const selectedTools = toolNames?.length ? getToolsByNames(toolNames) : undefined;
+  if (toolNames?.length) {
+    const unknown = validateToolNames(toolNames);
+    if (unknown.length > 0) {
+      return c.json({ error: `Unknown tool(s): ${unknown.join(", ")}` }, 400);
+    }
+  }
+
+  const tools = toolNames?.length
+    ? getToolsByNames(toolNames as ToolName[])
+    : undefined;
 
   const startTime = performance.now();
   const result = streamText({
     model: getModel(model),
     system: systemPrompt,
     prompt,
-    tools: selectedTools,
-    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
+    tools,
+    stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   return streamSSE(c, async (stream) => {

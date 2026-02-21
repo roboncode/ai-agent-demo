@@ -85,7 +85,7 @@ export const slides: SlideConfig[] = [
     demoHint: "We send a question and watch the response stream in token by token",
     demo: {
       type: "sse",
-      endpoint: "/api/generate/stream",
+      endpoint: "/api/generate?format=sse",
       systemPrompt: "You are a concise technical explainer.",
       body: {
         prompt: "Explain what an AI agent is in 2-3 sentences.",
@@ -129,7 +129,7 @@ event: done
 data: {"usage": {"totalTokens": 142}}`,
     demo: {
       type: "sse",
-      endpoint: "/api/generate/stream",
+      endpoint: "/api/generate?format=sse",
       systemPrompt: "You are a creative poet.",
       body: {
         prompt: "Write a short poem about AI agents working together.",
@@ -154,7 +154,7 @@ data: {"usage": {"totalTokens": 142}}`,
         label: "With streaming — token by token",
         demo: {
           type: "sse",
-          endpoint: "/api/generate/stream",
+          endpoint: "/api/generate?format=sse",
           systemPrompt: "You are a creative poet.",
           body: {
             prompt: "Write a short poem about AI agents working together.",
@@ -223,7 +223,7 @@ POST /api/agents/weather
         label: "Ask the LLM — no tools, no real data",
         demo: {
           type: "sse",
-          endpoint: "/api/generate/stream",
+          endpoint: "/api/generate?format=sse",
           systemPrompt: "You are a helpful assistant.",
           body: {
             prompt: "What is the weather like in San Francisco right now?",
