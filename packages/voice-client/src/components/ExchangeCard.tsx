@@ -1,5 +1,6 @@
 import { Show, For, createSignal } from "solid-js";
 import type { Exchange, ActivityEvent } from "./types";
+import MarkdownText from "./MarkdownText";
 
 interface ExchangeCardProps {
   exchange: Exchange;
@@ -84,7 +85,7 @@ export default function ExchangeCard(props: ExchangeCardProps) {
             <span class="vc-bubble-role">Agent</span>
             <span class="vc-bubble-time">{formatTime(ex().timestamp)}</span>
           </div>
-          <p>{ex().agentText}</p>
+          <MarkdownText content={ex().agentText} />
           <Show when={ex().isComplete}>
             <div class="vc-card-actions">
               {/* Playback controls */}

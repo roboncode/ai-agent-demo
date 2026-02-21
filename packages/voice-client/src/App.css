@@ -714,3 +714,77 @@
   0%, 60%, 100% { opacity: 0.4; transform: translateY(0); }
   30% { opacity: 1; transform: translateY(-4px); }
 }
+
+/* ── Markdown rendering ── */
+
+.md-root {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.md-heading {
+  color: var(--accent);
+  font-weight: 600;
+  margin-top: 0.3em;
+}
+
+.md-bold {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.md-italic {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.md-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.md-list-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.md-bullet {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 0.55em;
+}
+
+.md-list-num {
+  flex-shrink: 0;
+  color: var(--accent);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.md-gap {
+  height: 0.4em;
+}
+
+/* ── Keyboard shortcut badge ── */
+
+.vc-kbd {
+  display: inline-block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  vertical-align: baseline;
+}

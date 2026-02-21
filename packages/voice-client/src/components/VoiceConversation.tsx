@@ -375,7 +375,8 @@ export default function VoiceConversation() {
             </div>
             <p class="vc-empty-text">Hold the microphone to start a conversation</p>
             <p class="vc-empty-sub">
-              Hold to record, release to review, then send to the supervisor agent
+              Hold to record, release to review, then send to the supervisor agent.
+              You can also hold <kbd class="vc-kbd">Space</kbd> to record.
             </p>
           </div>
         </Show>
