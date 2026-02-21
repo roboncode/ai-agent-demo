@@ -1,5 +1,6 @@
 import { agentRegistry } from "./agent-registry.js";
 import { loadOverrides } from "../storage/prompt-store.js";
+import { initializeVoice } from "../voice/voice-manager.js";
 
 export async function initializeRegistry() {
   // Import all tool modules (triggers self-registration)
@@ -30,6 +31,9 @@ export async function initializeRegistry() {
     overrideMap[name] = entry.prompt;
   }
   agentRegistry.loadPromptOverrides(overrideMap);
+
+  // Initialize voice subsystem
+  initializeVoice();
 
   console.log(
     `Registry initialized: ${agentRegistry.list().length} agents, tools loaded`,

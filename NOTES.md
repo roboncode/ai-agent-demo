@@ -3,6 +3,7 @@ evals
 self-improving agents
 a/b testing
 voice
+skillz
 
 utility 
 
@@ -49,3 +50,35 @@ That's not overcomplicating it — it's the right model. You're describing exact
 
   This feels like the natural next evolution — merge the orchestrators into one smart supervisor
   that handles all three modes. Want me to write up a plan for this?
+  
+  
+  // Initialize with default configuration using environment variables
+  const voice = new Voice();
+  
+  // Or initialize with specific configuration
+  const voiceWithConfig = new Voice({
+    speechModel: {
+      name: "tts-1-hd",
+    },
+    listeningModel: {
+      name: "whisper-1",
+    },
+    speaker: "alloy", // Default voice
+  });
+  
+  // Convert text to speech
+  const audioStream = await voice.speak("Hello, how can I help you?", {
+    speaker: "nova", // Override default voice
+    speed: 1.2, // Adjust speech speed
+  });
+  
+  // Convert speech to text
+  const text = await voice.listen(audioStream, {
+    filetype: "mp3",
+  });
+
+
+chlepping… (7m 1s · ↑ 19.0k tokens · thought for 4s)
+  ⎿  Tip: Working with HTML/CSS? Add the frontend-design plugin:
+     /plugin marketplace add anthropics/claude-code
+     /plugin install frontend-design@claude-code-plugins

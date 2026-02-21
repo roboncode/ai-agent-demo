@@ -141,6 +141,8 @@ function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
   const agents = getRoutableAgents(allowedAgents);
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
 
+  console.log(`[supervisor] Routable agents (${agents.length}):`, agents.map((a) => a.name));
+
   return `${basePrompt}\n\nAvailable agents:\n${agentList}`;
 }
 
@@ -183,13 +185,18 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
         if (tr.toolName === "routeToAgent") {
           const output = (tr as any).output;
           if (output?.items?.length) {
+            const supervisorUsage = extractUsage(result, startTime);
+            const subAgentUsage = output?.usage as UsageInfo | undefined;
+            const totalUsage = subAgentUsage
+              ? mergeUsage(supervisorUsage, subAgentUsage)
+              : supervisorUsage;
             return {
               response: output.response ?? "",
               awaitingResponse: true,
               items: output.items,
               toolsUsed: ["routeToAgent"],
               agentsUsed: [] as string[],
-              usage: extractUsage(result, startTime),
+              usage: totalUsage,
             };
           }
         }
@@ -212,24 +219,30 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
         const allItems = needsClarification.flatMap(r =>
           r.result.items?.map((item) => ({ ...item, agent: r.agent })) ?? []
         );
+        const supervisorUsage = extractUsage(result, startTime);
+        const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
         return {
           response: "",
           awaitingResponse: true,
           items: allItems,
           toolsUsed: ["createTask"],
           agentsUsed: needsClarification.map(r => r.agent),
-          usage: extractUsage(result, startTime),
+          usage: mergeUsage(supervisorUsage, ...subAgentUsages),
         };
       }
     }
 
     const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
+    const synthesisStart = performance.now();
     const synthesisResult = await generateText({
       model: getModel(model),
       prompt: synthesisPrompt,
     });
+    const synthUsage = extractUsage(synthesisResult, synthesisStart);
 
+    const supervisorUsage = extractUsage(result, startTime);
+    const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
     const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
     const agentsUsed = results.map((r) => r.agent);
 
@@ -242,9 +255,17 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
         query: r.query,
         summary: r.result.response.slice(0, 200),
       })),
-      usage: extractUsage(result, startTime),
+      usage: mergeUsage(supervisorUsage, ...subAgentUsages, synthUsage),
     };
   }
+
+  // Direct routeToAgent path — sub-agent usage is in tool results
+  const supervisorUsage = extractUsage(result, startTime);
+  const routeResultUsages = result.steps
+    .flatMap((step) => step.toolResults)
+    .filter((tr) => tr.toolName === "routeToAgent")
+    .map((tr) => (tr as any).output?.usage)
+    .filter((u): u is UsageInfo => !!u);
 
   const toolsUsed = result.steps
     .flatMap((step) => step.toolCalls)
@@ -260,7 +281,9 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
     agentsUsed: [...new Set(agentsUsed)],
-    usage: extractUsage(result, startTime),
+    usage: routeResultUsages.length > 0
+      ? mergeUsage(supervisorUsage, ...routeResultUsages)
+      : supervisorUsage,
   };
 }
 
@@ -385,12 +408,20 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
                 const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
                 await writer.write("ask:user", { items: taggedItems });
                 await writer.write("agent:end", { agent: "supervisor" });
+
+                // Include sub-agent usage from the inline routeToAgent execution
+                const subAgentUsage = output?.usage as UsageInfo | undefined;
+                const totalUsage = subAgentUsage
+                  ? mergeUsage(planUsage, subAgentUsage)
+                  : { ...planUsage };
+                totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
                 await writer.write("done", {
                   toolsUsed: ["routeToAgent"],
                   conversationId: convId,
                   awaitingResponse: true,
                   items: taggedItems,
-                  usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+                  usage: totalUsage,
                 });
                 unsub();
                 return;
@@ -482,7 +513,10 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         const synthesisUsage = await synthesisResult.usage;
         const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
         const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
-        const totalUsage = mergeUsage(planUsage, synthUsageInfo);
+        const subAgentUsages = routeResults
+          .map((tr) => (tr as any).output?.usage)
+          .filter((u): u is UsageInfo => !!u);
+        const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
         totalUsage.durationMs = Math.round(performance.now() - overallStart);
 
         await writer.write("agent:end", { agent: "supervisor" });
@@ -523,11 +557,13 @@ function buildJsonHandler(allowedAgents?: string[], defaultAutonomous = true) {
 
       const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
+      const synthesisStart = performance.now();
       const synthesisResult = await generateText({ model: getModel(model), prompt: synthesisPrompt });
+      const synthUsage = extractUsage(synthesisResult, synthesisStart);
 
       const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
       const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-      const totalUsage = mergeUsage(...subAgentUsages);
+      const totalUsage = mergeUsage(...subAgentUsages, synthUsage);
       totalUsage.durationMs = Math.round(performance.now() - overallStart);
 
       return c.json({
