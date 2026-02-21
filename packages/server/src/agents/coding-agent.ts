@@ -1,128 +1,70 @@
-import { generateText, tool, stepCountIs } from "ai";
-import { z } from "zod";
-import vm from "node:vm";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
+import {
+  createScriptTool,
+  updateScriptTool,
+  readScriptTool,
+  listScriptsTool,
+  deleteScriptTool,
+} from "../tools/scripts.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
-const SYSTEM_PROMPT = `You are a coding agent that writes and executes JavaScript code to solve problems.
+const SYSTEM_PROMPT = `You are a coding agent that creates, edits, and manages persistent JavaScript scripts.
 
-When asked to solve a problem:
-1. Write clear, well-commented JavaScript code
-2. Use the executeCode tool to run it
-3. Analyze the output and present the results
+Scripts are stored as files and can be executed later via the execute agent or the REST API.
 
-Guidelines:
-- Write pure JavaScript (no imports/requires)
-- Use console.log() for output
-- Keep code concise and focused
-- Handle edge cases
-- The execution environment is sandboxed with no file system or network access`;
+When asked to create or modify code:
+1. Use listScripts to see what already exists
+2. Use readScript before editing to see current code
+3. Use createScript for new scripts, updateScript for modifications
+4. Always write a main(args) function as the entry point
 
-const executeCodeTool = tool({
-  description:
-    "Execute JavaScript code in a sandboxed environment. Use console.log() for output.",
-  inputSchema: z.object({
-    code: z.string().describe("JavaScript code to execute"),
-    description: z
-      .string()
-      .optional()
-      .describe("Brief description of what the code does"),
-  }),
-  execute: async ({ code, description }) => {
-    const logs: string[] = [];
-    const errors: string[] = [];
+Script conventions:
+- Every script MUST have an \`export default function main(args)\` entry point
+- \`args\` is always an object — destructure what you need
+- Return a value from main() — it becomes the execution result
+- Use console.log() for intermediate output
+- Write pure JavaScript (no imports/requires, no file system, no network)
+- Keep scripts focused, well-commented, and reusable
+- Use helper functions above main() for complex logic
 
-    const sandbox = {
-      console: {
-        log: (...args: unknown[]) =>
-          logs.push(args.map(String).join(" ")),
-        error: (...args: unknown[]) =>
-          errors.push(args.map(String).join(" ")),
-        warn: (...args: unknown[]) =>
-          logs.push(`[warn] ${args.map(String).join(" ")}`),
-      },
-      Math,
-      Date,
-      JSON,
-      Array,
-      Object,
-      String,
-      Number,
-      Boolean,
-      Map,
-      Set,
-      RegExp,
-      Error,
-      parseInt,
-      parseFloat,
-      isNaN,
-      isFinite,
-    };
+Example script structure:
+\`\`\`js
+// Helper functions
+function calculate(x, y) {
+  return x + y;
+}
 
-    try {
-      const context = vm.createContext(sandbox);
-      const result = vm.runInNewContext(code, context, {
-        timeout: 5000,
-        displayErrors: true,
-      });
+// Entry point
+export default function main(args) {
+  const { x, y } = args;
+  return { result: calculate(x, y) };
+}
+\`\`\``;
 
-      return {
-        success: true,
-        description: description ?? "Code execution",
-        output: logs.join("\n"),
-        errors: errors.length > 0 ? errors.join("\n") : undefined,
-        returnValue: result !== undefined ? String(result) : undefined,
-      };
-    } catch (err: any) {
-      return {
-        success: false,
-        description: description ?? "Code execution",
-        output: logs.join("\n"),
-        error: err.message,
-      };
-    }
-  },
-});
+const tools = {
+  createScript: createScriptTool,
+  updateScript: updateScriptTool,
+  readScript: readScriptTool,
+  listScripts: listScriptsTool,
+  deleteScript: deleteScriptTool,
+};
 
 export const CODING_AGENT_CONFIG = {
   system: SYSTEM_PROMPT,
-  tools: { executeCode: executeCodeTool },
+  tools,
 };
 
-export async function runCodingAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: { executeCode: executeCodeTool },
-    stopWhen: stepCountIs(5),
-  });
-
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
-
-  const codeExecutions = result.steps
-    .flatMap((step) => step.toolResults)
-    .filter(Boolean);
-
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    codeExecutions,
-    usage: extractUsage(result, startTime),
-  };
-}
+export const runCodingAgent = (message: string, model?: string) =>
+  runAgent(CODING_AGENT_CONFIG, message, model);
 
 // Self-registration
 agentRegistry.register({
   name: "coding",
-  description: "Code generation and execution agent with sandboxed JavaScript",
-  toolNames: ["executeCode"],
+  description: "Script creation and management agent — writes persistent JavaScript scripts",
+  toolNames: ["createScript", "updateScript", "readScript", "listScripts", "deleteScript"],
   defaultFormat: "sse",
   defaultSystem: SYSTEM_PROMPT,
-  tools: { executeCode: executeCodeTool },
-  ...makeRegistryHandlers({ tools: { executeCode: executeCodeTool } }),
+  tools,
+  ...makeRegistryHandlers({ tools }),
 });

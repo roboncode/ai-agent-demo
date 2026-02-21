@@ -501,7 +501,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         await writer.write("agent:think", { text: "Synthesizing results..." });
 
         const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
-        const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+        const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPresent these results clearly for the user's query: "${message}"\n\nIMPORTANT: If the results contain concrete data (numbers, values, execution output), present that data directly. Do NOT re-derive, re-calculate, or re-explain the logic — just present what the agent returned.`;
 
         const synthesisStart = performance.now();
         const synthesisResult = streamText({ model: getModel(model), prompt: synthesisPrompt });

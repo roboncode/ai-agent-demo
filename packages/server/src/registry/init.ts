@@ -8,6 +8,7 @@ export async function initializeRegistry() {
     import("../tools/weather.js"),
     import("../tools/hackernews.js"),
     import("../tools/movies.js"),
+    import("../tools/scripts.js"),
   ]);
 
   // Import all agent modules (triggers self-registration)
@@ -22,6 +23,7 @@ export async function initializeRegistry() {
     import("../agents/human-in-loop-agent.js"),
     import("../agents/recipe-agent.js"),
     import("../agents/guardrails-agent.js"),
+    import("../agents/execute-agent.js"),
   ]);
 
   // Load persisted prompt overrides

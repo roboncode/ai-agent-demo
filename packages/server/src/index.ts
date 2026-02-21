@@ -8,6 +8,7 @@ import toolsRoutes from "./routes/tools/tools.routes.js";
 import agentsRoutes from "./routes/agents/agents.routes.js";
 import memoryRoutes from "./routes/memory/memory.routes.js";
 import voiceRoutes from "./routes/voice/voice.routes.js";
+import scriptsRoutes from "./routes/scripts/scripts.routes.js";
 import { createWebSocketHandler } from "./routes/ws/ws.route.js";
 import { initializeRegistry } from "./registry/init.js";
 
@@ -30,6 +31,7 @@ app.route("/api/tools", toolsRoutes);
 app.route("/api/agents", agentsRoutes);
 app.route("/api/memory", memoryRoutes);
 app.route("/api/voice", voiceRoutes);
+app.route("/api/scripts", scriptsRoutes);
 
 // In production, serve the built client as static files
 if (process.env.NODE_ENV === "production") {
