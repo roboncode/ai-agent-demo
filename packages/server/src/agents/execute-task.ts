@@ -2,7 +2,7 @@ import type { UsageInfo } from "../lib/ai-provider.js";
 import { runAgent } from "../lib/run-agent.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import {
-  ORCHESTRATOR_AGENTS,
+  getOrchestratorAgents,
   MAX_DELEGATION_DEPTH,
   delegationStore,
   type DelegationContext,
@@ -29,7 +29,7 @@ export async function executeTask(
   }
 
   // Guard 2: Orchestrator agents must not be delegated to
-  if (ORCHESTRATOR_AGENTS.has(agent)) {
+  if (getOrchestratorAgents().has(agent)) {
     return errorResult(agent, query, `Agent "${agent}" is an orchestrator and cannot be delegated to`);
   }
 

@@ -5,9 +5,9 @@ import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
 import { streamAgentResponse } from "../lib/stream-helpers.js";
-import { ORCHESTRATOR_AGENTS } from "../lib/delegation-context.js";
+import { getOrchestratorAgents } from "../lib/delegation-context.js";
 
-const SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
+const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
 
 When you receive a query:
 1. Analyze what the user is asking about
@@ -17,14 +17,29 @@ When you receive a query:
 
 Always use the routeToAgent tool - never answer domain questions directly.`;
 
-function getRoutableAgents() {
-  return agentRegistry.list().filter(
-    (a) => !ORCHESTRATOR_AGENTS.has(a.name) && a.tools && Object.keys(a.tools).length > 0
-  );
+export interface SupervisorAgentConfig {
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  /** Explicit list of agent names to route to (omit for auto-discovery) */
+  agents?: string[];
 }
 
-function buildRoutingTool() {
-  const agents = getRoutableAgents();
+function getRoutableAgents(allowedAgents?: string[]) {
+  const orchestrators = getOrchestratorAgents();
+  return agentRegistry.list().filter((a) => {
+    if (orchestrators.has(a.name)) return false;
+    if (!a.tools || Object.keys(a.tools).length === 0) return false;
+    if (allowedAgents) return allowedAgents.includes(a.name);
+    return true;
+  });
+}
+
+function buildRoutingTool(allowedAgents?: string[]) {
+  const agents = getRoutableAgents(allowedAgents);
+  if (agents.length === 0) {
+    throw new Error("No routable agents available");
+  }
   const agentNames = agents.map((a) => a.name) as [string, ...string[]];
 
   return tool({
@@ -41,21 +56,16 @@ function buildRoutingTool() {
   });
 }
 
-function buildSystemPrompt(basePrompt: string) {
-  const agents = getRoutableAgents();
+function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
+  const agents = getRoutableAgents(allowedAgents);
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
   return `${basePrompt}\n\nAvailable agents:\n${agentList}`;
 }
 
-export const SUPERVISOR_AGENT_CONFIG = {
-  system: SYSTEM_PROMPT,
-  tools: {} as Record<string, any>,
-};
-
-export async function runSupervisorAgent(message: string, model?: string) {
+export async function runSupervisorAgent(message: string, model?: string, allowedAgents?: string[]) {
   const startTime = performance.now();
-  const routeToAgentTool = buildRoutingTool();
-  const system = buildSystemPrompt(SYSTEM_PROMPT);
+  const routeToAgentTool = buildRoutingTool(allowedAgents);
+  const system = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, allowedAgents);
 
   const result = await generateText({
     model: getModel(model),
@@ -83,12 +93,12 @@ export async function runSupervisorAgent(message: string, model?: string) {
   };
 }
 
-function buildHandler(format: "sse" | "json") {
+function buildHandler(format: "sse" | "json", allowedAgents?: string[]) {
   if (format === "sse") {
     return async (c: any, { systemPrompt, memoryContext }: any) => {
       const { message, conversationId: cid, model } = await c.req.json();
-      const routeToAgentTool = buildRoutingTool();
-      let system = buildSystemPrompt(systemPrompt);
+      const routeToAgentTool = buildRoutingTool(allowedAgents);
+      let system = buildSystemPrompt(systemPrompt, allowedAgents);
       if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
 
       return streamAgentResponse(c, {
@@ -103,8 +113,8 @@ function buildHandler(format: "sse" | "json") {
 
   return async (c: any, { systemPrompt, memoryContext }: any) => {
     const { message, conversationId: cid, model } = await c.req.json();
-    const routeToAgentTool = buildRoutingTool();
-    let system = buildSystemPrompt(systemPrompt);
+    const routeToAgentTool = buildRoutingTool(allowedAgents);
+    let system = buildSystemPrompt(systemPrompt, allowedAgents);
     if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
 
     const { runAgent: runAgentFn } = await import("../lib/run-agent.js");
@@ -117,13 +127,26 @@ function buildHandler(format: "sse" | "json") {
   };
 }
 
-// Self-registration
-agentRegistry.register({
-  name: "supervisor",
-  description: "Supervisor routing agent that delegates to specialist agents",
-  toolNames: ["routeToAgent"],
-  defaultFormat: "sse",
-  defaultSystem: SYSTEM_PROMPT,
-  sseHandler: buildHandler("sse"),
-  jsonHandler: buildHandler("json"),
-});
+export function createSupervisorAgent(config: SupervisorAgentConfig) {
+  const {
+    name,
+    description = "Supervisor routing agent that delegates to specialist agents",
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    agents,
+  } = config;
+
+  agentRegistry.register({
+    name,
+    description,
+    toolNames: ["routeToAgent"],
+    defaultFormat: "sse",
+    defaultSystem: systemPrompt,
+    isOrchestrator: true,
+    agents,
+    sseHandler: buildHandler("sse", agents),
+    jsonHandler: buildHandler("json", agents),
+  });
+}
+
+// Default self-registration (backward compatible)
+createSupervisorAgent({ name: "supervisor" });

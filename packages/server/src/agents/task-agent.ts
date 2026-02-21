@@ -6,9 +6,9 @@ import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo 
 import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
-import { ORCHESTRATOR_AGENTS } from "../lib/delegation-context.js";
+import { getOrchestratorAgents } from "../lib/delegation-context.js";
 
-const BASE_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
+const DEFAULT_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
 
 When you receive a complex query that spans multiple domains:
 1. Analyze what information is needed
@@ -17,14 +17,29 @@ When you receive a complex query that spans multiple domains:
 
 Create one task per distinct information need. Be specific in your task queries.`;
 
-function getDelegatableAgents() {
-  return agentRegistry.list().filter(
-    (a) => !ORCHESTRATOR_AGENTS.has(a.name) && a.tools && Object.keys(a.tools).length > 0
-  );
+export interface TaskAgentConfig {
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  /** Explicit list of agent names to delegate to (omit for auto-discovery) */
+  agents?: string[];
 }
 
-function buildCreateTaskTool() {
-  const agents = getDelegatableAgents();
+function getDelegatableAgents(allowedAgents?: string[]) {
+  const orchestrators = getOrchestratorAgents();
+  return agentRegistry.list().filter((a) => {
+    if (orchestrators.has(a.name)) return false;
+    if (!a.tools || Object.keys(a.tools).length === 0) return false;
+    if (allowedAgents) return allowedAgents.includes(a.name);
+    return true;
+  });
+}
+
+function buildCreateTaskTool(allowedAgents?: string[]) {
+  const agents = getDelegatableAgents(allowedAgents);
+  if (agents.length === 0) {
+    throw new Error("No delegatable agents available");
+  }
   const agentNames = agents.map((a) => a.name) as [string, ...string[]];
 
   return tool({
@@ -40,8 +55,8 @@ function buildCreateTaskTool() {
   });
 }
 
-function buildSystemPrompt(basePrompt: string) {
-  const agents = getDelegatableAgents();
+function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
+  const agents = getDelegatableAgents(allowedAgents);
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
   return `${basePrompt}\n\nAvailable agents for tasks:\n${agentList}`;
 }
@@ -61,10 +76,10 @@ export function collectTasksFromSteps(steps: any[]): { agent: string; query: str
   return tasks;
 }
 
-export async function runTaskAgent(message: string, model?: string) {
+export async function runTaskAgent(message: string, model?: string, allowedAgents?: string[]) {
   const overallStart = performance.now();
-  const createTaskTool = buildCreateTaskTool();
-  const system = buildSystemPrompt(BASE_SYSTEM_PROMPT);
+  const createTaskTool = buildCreateTaskTool(allowedAgents);
+  const system = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, allowedAgents);
 
   // Phase 1: Let AI plan the tasks
   const planStart = performance.now();
@@ -131,25 +146,14 @@ Please synthesize these results into a coherent, comprehensive response for the 
   };
 }
 
-// Self-registration
-agentRegistry.register({
-  name: "task",
-  description: "Parallel task delegation agent that breaks complex queries into sub-tasks",
-  toolNames: ["createTask"],
-  defaultFormat: "sse",
-  defaultSystem: BASE_SYSTEM_PROMPT,
-  jsonHandler: async (c: Context, { systemPrompt, memoryContext }) => {
-    const { message, conversationId: cid, model } = await c.req.json();
-    const result = await runTaskAgent(message, model);
-    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
-  },
-  sseHandler: async (c: Context, { systemPrompt, memoryContext }) => {
+function buildSseHandler(allowedAgents?: string[]) {
+  return async (c: Context, { systemPrompt, memoryContext }: { systemPrompt: string; memoryContext?: string }) => {
     const { message, conversationId: cid, model } = await c.req.json();
     const convId = generateConversationId(cid);
     const overallStart = performance.now();
 
-    const createTaskTool = buildCreateTaskTool();
-    let system = buildSystemPrompt(systemPrompt);
+    const createTaskTool = buildCreateTaskTool(allowedAgents);
+    let system = buildSystemPrompt(systemPrompt, allowedAgents);
     if (memoryContext) {
       system += `\n\n## Memory Context\n${memoryContext}`;
     }
@@ -220,5 +224,37 @@ agentRegistry.register({
         }),
       });
     });
-  },
-});
+  };
+}
+
+function buildJsonHandler(allowedAgents?: string[]) {
+  return async (c: Context, { systemPrompt, memoryContext }: { systemPrompt: string; memoryContext?: string }) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const result = await runTaskAgent(message, model, allowedAgents);
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  };
+}
+
+export function createTaskAgent(config: TaskAgentConfig) {
+  const {
+    name,
+    description = "Parallel task delegation agent that breaks complex queries into sub-tasks",
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    agents,
+  } = config;
+
+  agentRegistry.register({
+    name,
+    description,
+    toolNames: ["createTask"],
+    defaultFormat: "sse",
+    defaultSystem: systemPrompt,
+    isOrchestrator: true,
+    agents,
+    sseHandler: buildSseHandler(agents),
+    jsonHandler: buildJsonHandler(agents),
+  });
+}
+
+// Default self-registration (backward compatible)
+createTaskAgent({ name: "task" });

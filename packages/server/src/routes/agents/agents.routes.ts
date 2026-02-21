@@ -34,6 +34,8 @@ router.openapi(
                   toolNames: z.array(z.string()),
                   hasPromptOverride: z.boolean(),
                   actions: z.array(z.string()).optional(),
+                  isOrchestrator: z.boolean().optional(),
+                  agents: z.array(z.string()).optional(),
                 }),
               ),
               count: z.number(),
@@ -57,6 +59,8 @@ router.openapi(
         toolNames: a.toolNames,
         hasPromptOverride: agentRegistry.hasPromptOverride(a.name),
         actions: a.actions?.map((act) => `${act.method.toUpperCase()} /${a.name}/${act.name}`),
+        ...(a.isOrchestrator && { isOrchestrator: true }),
+        ...(a.agents && { agents: a.agents }),
       };
     });
     return c.json({ agents, count: agents.length });

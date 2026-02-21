@@ -26,6 +26,10 @@ export interface AgentRegistration {
   jsonHandler?: AgentHandler;
   sseHandler?: AgentHandler;
   actions?: ActionRegistration[];
+  /** Explicit list of agent names this orchestrator routes to (omit for auto-discovery) */
+  agents?: string[];
+  /** Marks agent as an orchestrator — orchestrators cannot be delegated to */
+  isOrchestrator?: boolean;
 }
 
 class AgentRegistry {
@@ -60,6 +64,15 @@ class AgentRegistry {
 
   hasPromptOverride(name: string): boolean {
     return this.promptOverrides.has(name);
+  }
+
+  /** Returns the set of agent names that are marked as orchestrators */
+  getOrchestratorNames(): Set<string> {
+    const names = new Set<string>();
+    for (const agent of this.agents.values()) {
+      if (agent.isOrchestrator) names.add(agent.name);
+    }
+    return names;
   }
 
   loadPromptOverrides(overrides: Record<string, string>) {
