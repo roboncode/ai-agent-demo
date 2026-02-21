@@ -684,12 +684,13 @@ const [weather, news, movie] = await Promise.all([
     demoHint: "Weather, news, and movies fetched simultaneously",
     demo: {
       type: "sse",
-      endpoint: "/api/agents/task",
+      endpoint: "/api/agents/supervisor",
       systemPrompt:
-        "You are a task delegation agent that breaks complex queries into parallel sub-tasks.\n\nWhen you receive a complex query:\n1. Analyze what information is needed\n2. Create individual tasks using the createTask tool for each distinct sub-query\n3. Tasks will be executed in parallel for efficiency\n\nAvailable agents: weather, hackernews, knowledge. Create one task per distinct information need.",
+        "You are a supervisor agent that routes user queries to the appropriate specialist agent.\n\nFor complex, multi-domain queries: use createTask for each sub-task (they will run in parallel).\n\nAvailable agents: weather, hackernews, knowledge. Create one task per distinct information need.",
       body: {
         message:
           "I need three things: the weather in Paris, the top Hacker News story, and a good sci-fi movie recommendation.",
+        planMode: true,
       },
     },
   },

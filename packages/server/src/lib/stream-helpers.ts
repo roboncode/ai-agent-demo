@@ -2,6 +2,7 @@ import { streamSSE } from "hono/streaming";
 import type { Context } from "hono";
 import { streamText, stepCountIs } from "ai";
 import { getModel, extractStreamUsage } from "./ai-provider.js";
+import { getEventBus } from "./delegation-context.js";
 
 interface AgentStreamConfig {
   system: string;
@@ -26,9 +27,11 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
   return streamSSE(c, async (stream) => {
     let id = 0;
     const toolsUsed = new Set<string>();
+    const bus = getEventBus();
 
     for await (const chunk of result.fullStream) {
       if (chunk.type === "text-delta") {
+        bus?.emit("text:delta", { text: chunk.text });
         await stream.writeSSE({
           id: String(id++),
           event: "text-delta",
@@ -36,6 +39,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
         });
       } else if (chunk.type === "tool-call") {
         toolsUsed.add(chunk.toolName);
+        bus?.emit("tool:call", { tool: chunk.toolName, args: chunk.input });
         await stream.writeSSE({
           id: String(id++),
           event: "tool-call",
@@ -45,6 +49,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
           }),
         });
       } else if (chunk.type === "tool-result") {
+        bus?.emit("tool:result", { tool: chunk.toolName, result: chunk.output });
         await stream.writeSSE({
           id: String(id++),
           event: "tool-result",

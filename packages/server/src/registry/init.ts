@@ -21,7 +21,6 @@ export async function initializeRegistry() {
     import("../agents/human-in-loop-agent.js"),
     import("../agents/recipe-agent.js"),
     import("../agents/guardrails-agent.js"),
-    import("../agents/task-agent.js"),
   ]);
 
   // Load persisted prompt overrides

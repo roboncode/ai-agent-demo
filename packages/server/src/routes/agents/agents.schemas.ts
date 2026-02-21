@@ -8,6 +8,18 @@ export const agentRequestSchema = z.object({
     example: ["user-123"],
     description: "Memory namespace IDs to load as context",
   }),
+  planMode: z.boolean().optional().openapi({
+    description: "Force plan-only mode (supervisor creates tasks but waits for approval before executing)",
+  }),
+  approvedPlan: z.array(z.object({
+    agent: z.string(),
+    query: z.string(),
+  })).optional().openapi({
+    description: "Pre-approved task plan to execute immediately",
+  }),
+  autonomous: z.boolean().optional().openapi({
+    description: "Per-request override for autonomous mode (when false, supervisor may ask user for input)",
+  }),
 });
 
 export const agentResponseSchema = z.object({

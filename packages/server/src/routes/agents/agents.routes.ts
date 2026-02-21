@@ -4,6 +4,8 @@ import { agentRegistry } from "../../registry/agent-registry.js";
 import { agentRequestSchema, agentPatchSchema } from "./agents.schemas.js";
 import { saveOverride, deleteOverride } from "../../storage/prompt-store.js";
 import { loadMemoriesForIds } from "../../storage/memory-store.js";
+import { AgentEventBus } from "../../lib/agent-events.js";
+import { delegationStore, type DelegationContext } from "../../lib/delegation-context.js";
 
 const router = createRouter();
 
@@ -322,6 +324,13 @@ router.openapi(
       }
     } catch {
       // body parsing may fail on re-read, that's fine
+    }
+
+    // Create event bus for SSE format — enables sub-agents to emit events
+    if (format === "sse") {
+      const bus = new AgentEventBus();
+      const ctx: DelegationContext = { chain: [], depth: 0, events: bus };
+      return delegationStore.run(ctx, () => handler(c, { systemPrompt, memoryContext }));
     }
 
     return handler(c, { systemPrompt, memoryContext });

@@ -216,6 +216,73 @@ async function runSingleSseStream(
         cb.addLine("status", `-- ${data.phase} --`);
         break;
       }
+      case "agent:start": {
+        cb.addLine("status", `-- agent:start ${data.agent} --`);
+        break;
+      }
+      case "agent:end": {
+        cb.addLine("status", `-- agent:end ${data.agent} --`);
+        break;
+      }
+      case "agent:plan": {
+        if (streamBuffer) {
+          cb.addLine("text", streamBuffer);
+          streamBuffer = "";
+          cb.setStreamingText("");
+        }
+        const tasks = data.tasks as { agent: string; query: string }[];
+        cb.addLine("status", `-- plan: ${tasks.length} task(s) --`);
+        for (const t of tasks) {
+          cb.addLine("info", `  → ${t.agent}: ${t.query}`);
+        }
+        break;
+      }
+      case "agent:think": {
+        cb.addLine("status", `-- ${data.text} --`);
+        break;
+      }
+      case "delegate:start": {
+        cb.addLine("status", `-- delegate ${data.from} → ${data.to} --`);
+        break;
+      }
+      case "delegate:end": {
+        cb.addLine("status", `-- delegate:end ${data.to} --`);
+        break;
+      }
+      case "ask:user": {
+        if (streamBuffer) {
+          cb.addLine("text", streamBuffer);
+          streamBuffer = "";
+          cb.setStreamingText("");
+        }
+        const items = data.items as { type: string; text: string; choices?: string[]; context?: string }[];
+        cb.addLine("status", "-- awaiting user input --");
+        for (const item of items) {
+          const ctx = item.context ? ` (${item.context})` : "";
+          switch (item.type) {
+            case "question":
+              cb.addLine("info", `  ? ${item.text}${ctx}`);
+              break;
+            case "option":
+              cb.addLine("info", `  ? ${item.text}${ctx}`);
+              for (const c of item.choices ?? []) cb.addLine("info", `    - ${c}`);
+              break;
+            case "confirmation":
+              cb.addLine("info", `  ? ${item.text}${ctx}`);
+              break;
+            case "action":
+              cb.addLine("info", `  > ${item.text}${ctx}`);
+              break;
+            case "warning":
+              cb.addLine("info", `  ! ${item.text}${ctx}`);
+              break;
+            case "info":
+              cb.addLine("info", `  i ${item.text}`);
+              break;
+          }
+        }
+        break;
+      }
       case "done": {
         if (streamBuffer) {
           cb.addLine("text", streamBuffer);
