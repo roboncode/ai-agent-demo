@@ -5,7 +5,7 @@ import { env } from "./env.js";
 import indexRoute from "./routes/index.route.js";
 import generateRoutes from "./routes/generate/generate.routes.js";
 import toolsRoutes from "./routes/tools/tools.routes.js";
-import agentsRoutes, { mountAgentRoutes } from "./routes/agents/agents.routes.js";
+import agentsRoutes from "./routes/agents/agents.routes.js";
 import memoryRoutes from "./routes/memory/memory.routes.js";
 import { createWebSocketHandler } from "./routes/ws/ws.route.js";
 import { initializeRegistry } from "./registry/init.js";
@@ -16,9 +16,6 @@ configureOpenAPI(app);
 
 // Initialize registries (imports all agents/tools, loads prompt overrides)
 await initializeRegistry();
-
-// Mount dynamic sub-routes after registry is initialized
-mountAgentRoutes();
 
 // Health check (no auth)
 app.route("/health", indexRoute);

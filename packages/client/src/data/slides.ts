@@ -266,12 +266,12 @@ POST /api/agents/weather
 }
 
 // Direct call — no AI needed:
-POST /api/tools/weather
+POST /api/tools/getWeather
 { "location": "San Francisco" }`,
     demoHint: "We call a weather tool directly — plain function, plain data",
     demo: {
       type: "json",
-      endpoint: "/api/tools/weather",
+      endpoint: "/api/tools/getWeather",
       body: {
         location: "San Francisco",
       },
@@ -438,7 +438,7 @@ agent.run("What's my favourite language?")
         label: "Clear all memories",
         demo: {
           type: "delete",
-          endpoint: "/api/memory",
+          endpoint: "/api/memory/default",
         },
       },
     ],
@@ -517,7 +517,7 @@ const response = await agent.run(userMessage);`,
     demoHint: "A finance question gets through. A cake recipe gets blocked.",
     demo: {
       type: "sse",
-      endpoint: "/api/agents/guardrails/stream",
+      endpoint: "/api/agents/guardrails?format=sse",
       systemPrompt:
         "Phase 1: Classify whether the query is a personal finance question.\nPhase 2: If allowed, stream finance advice.",
       body: {
@@ -565,7 +565,7 @@ if (decision.approved) await execute(proposal)`,
     demoHint: "The agent proposes sending an email — you decide if it happens",
     demo: {
       type: "multi-step",
-      proposeEndpoint: "/api/agents/human-in-loop/stream",
+      proposeEndpoint: "/api/agents/human-in-loop?format=sse",
       systemPrompt:
         "You are an agent that proposes actions for human approval before executing them.\n\nYou MUST ALWAYS use one of the available tools to propose an action. NEVER describe the action in text only.\n\nAvailable tools:\n- sendEmail: Propose sending an email\n- deleteData: Propose deleting data\n- publishContent: Propose publishing content\n\nYou MUST call the appropriate tool. The action will be queued for human review.",
       proposeBody: {

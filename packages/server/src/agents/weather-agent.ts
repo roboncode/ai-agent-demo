@@ -1,7 +1,7 @@
 import { runAgent } from "../lib/run-agent.js";
 import { weatherTool } from "../tools/weather.js";
 import { agentRegistry } from "../registry/agent-registry.js";
-import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a weather specialist agent. Your job is to provide accurate, helpful weather information.
 
@@ -26,7 +26,8 @@ agentRegistry.register({
   name: "weather",
   description: "Weather specialist agent using open-meteo data",
   toolNames: ["getWeather"],
-  type: "stream",
+  defaultFormat: "sse",
   defaultSystem: SYSTEM_PROMPT,
-  handler: makeRegistryStreamHandler({ tools: { getWeather: weatherTool } }),
+  tools: { getWeather: weatherTool },
+  ...makeRegistryHandlers({ tools: { getWeather: weatherTool } }),
 });

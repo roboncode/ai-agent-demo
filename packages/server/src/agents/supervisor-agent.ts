@@ -1,18 +1,12 @@
 import { generateText, tool, stepCountIs } from "ai";
 import { z } from "zod";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
-import { runWeatherAgent } from "./weather-agent.js";
-import { runHackernewsAgent } from "./hackernews-agent.js";
-import { runKnowledgeAgent } from "./knowledge-agent.js";
+import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
-import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
+import { generateConversationId } from "../registry/handler-factories.js";
+import { streamAgentResponse } from "../lib/stream-helpers.js";
 
 const SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
-
-Available agents:
-- weather: Handles weather queries (current conditions, forecasts, temperature)
-- hackernews: Handles Hacker News queries (trending stories, tech news)
-- knowledge: Handles movie queries (search, recommendations, details)
 
 When you receive a query:
 1. Analyze what the user is asking about
@@ -22,37 +16,50 @@ When you receive a query:
 
 Always use the routeToAgent tool - never answer domain questions directly.`;
 
-const routeToAgentTool = tool({
-  description:
-    "Route a query to a specialist agent. Choose the agent that best matches the query topic.",
-  inputSchema: z.object({
-    agent: z
-      .enum(["weather", "hackernews", "knowledge"])
-      .describe("The specialist agent to route to"),
-    query: z.string().describe("The query to send to the agent"),
-  }),
-  execute: async ({ agent, query }) => {
-    switch (agent) {
-      case "weather":
-        return await runWeatherAgent(query);
-      case "hackernews":
-        return await runHackernewsAgent(query);
-      case "knowledge":
-        return await runKnowledgeAgent(query);
-    }
-  },
-});
+// Agents that should not be routed to (would cause circular calls or don't support task execution)
+const EXCLUDED_AGENTS = new Set(["supervisor", "task"]);
+
+function getRoutableAgents() {
+  return agentRegistry.list().filter((a) => !EXCLUDED_AGENTS.has(a.name) && a.tools);
+}
+
+function buildRoutingTool() {
+  const agents = getRoutableAgents();
+  const agentNames = agents.map((a) => a.name) as [string, ...string[]];
+
+  return tool({
+    description:
+      "Route a query to a specialist agent. Choose the agent that best matches the query topic.",
+    inputSchema: z.object({
+      agent: z.enum(agentNames).describe("The specialist agent to route to"),
+      query: z.string().describe("The query to send to the agent"),
+    }),
+    execute: async ({ agent, query }) => {
+      const result = await executeTask(agent, query);
+      return result.result;
+    },
+  });
+}
+
+function buildSystemPrompt(basePrompt: string) {
+  const agents = getRoutableAgents();
+  const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
+  return `${basePrompt}\n\nAvailable agents:\n${agentList}`;
+}
 
 export const SUPERVISOR_AGENT_CONFIG = {
   system: SYSTEM_PROMPT,
-  tools: { routeToAgent: routeToAgentTool },
+  tools: {} as Record<string, any>,
 };
 
 export async function runSupervisorAgent(message: string, model?: string) {
   const startTime = performance.now();
+  const routeToAgentTool = buildRoutingTool();
+  const system = buildSystemPrompt(SYSTEM_PROMPT);
+
   const result = await generateText({
     model: getModel(model),
-    system: SYSTEM_PROMPT,
+    system,
     prompt: message,
     tools: { routeToAgent: routeToAgentTool },
     stopWhen: stepCountIs(5),
@@ -76,12 +83,47 @@ export async function runSupervisorAgent(message: string, model?: string) {
   };
 }
 
+function buildHandler(format: "sse" | "json") {
+  if (format === "sse") {
+    return async (c: any, { systemPrompt, memoryContext }: any) => {
+      const { message, conversationId: cid, model } = await c.req.json();
+      const routeToAgentTool = buildRoutingTool();
+      let system = buildSystemPrompt(systemPrompt);
+      if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
+
+      return streamAgentResponse(c, {
+        system,
+        tools: { routeToAgent: routeToAgentTool },
+        prompt: message,
+        model,
+        conversationId: generateConversationId(cid),
+      });
+    };
+  }
+
+  return async (c: any, { systemPrompt, memoryContext }: any) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const routeToAgentTool = buildRoutingTool();
+    let system = buildSystemPrompt(systemPrompt);
+    if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
+
+    const { runAgent: runAgentFn } = await import("../lib/run-agent.js");
+    const result = await runAgentFn(
+      { system, tools: { routeToAgent: routeToAgentTool } },
+      message,
+      model,
+    );
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  };
+}
+
 // Self-registration
 agentRegistry.register({
   name: "supervisor",
   description: "Supervisor routing agent that delegates to specialist agents",
   toolNames: ["routeToAgent"],
-  type: "stream",
+  defaultFormat: "sse",
   defaultSystem: SYSTEM_PROMPT,
-  handler: makeRegistryStreamHandler({ tools: { routeToAgent: routeToAgentTool } }),
+  sseHandler: buildHandler("sse"),
+  jsonHandler: buildHandler("json"),
 });

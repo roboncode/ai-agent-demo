@@ -3,7 +3,7 @@ import { z } from "zod";
 import vm from "node:vm";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
 import { agentRegistry } from "../registry/agent-registry.js";
-import { makeRegistryStreamHandler } from "../registry/handler-factories.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a coding agent that writes and executes JavaScript code to solve problems.
 
@@ -121,7 +121,8 @@ agentRegistry.register({
   name: "coding",
   description: "Code generation and execution agent with sandboxed JavaScript",
   toolNames: ["executeCode"],
-  type: "stream",
+  defaultFormat: "sse",
   defaultSystem: SYSTEM_PROMPT,
-  handler: makeRegistryStreamHandler({ tools: { executeCode: executeCodeTool } }),
+  tools: { executeCode: executeCodeTool },
+  ...makeRegistryHandlers({ tools: { executeCode: executeCodeTool } }),
 });

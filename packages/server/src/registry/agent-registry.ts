@@ -6,12 +6,11 @@ export type AgentHandler = (
   options: { systemPrompt: string; memoryContext?: string },
 ) => Response | Promise<Response>;
 
-export interface SubRouteRegistration {
-  subPath: string;
+export interface ActionRegistration {
+  name: string;
   method: "get" | "post" | "put" | "patch" | "delete";
   summary: string;
   description: string;
-  type: "stream" | "json";
   handler: (c: Context) => Response | Promise<Response>;
   requestSchema?: z.ZodType<any>;
 }
@@ -21,10 +20,12 @@ export interface AgentRegistration {
   description: string;
   tags?: string[];
   toolNames: string[];
-  type: "stream" | "json" | "hybrid";
+  defaultFormat: "json" | "sse";
   defaultSystem: string;
-  handler: AgentHandler;
-  subRoutes?: SubRouteRegistration[];
+  tools?: Record<string, any>;
+  jsonHandler?: AgentHandler;
+  sseHandler?: AgentHandler;
+  actions?: ActionRegistration[];
 }
 
 class AgentRegistry {

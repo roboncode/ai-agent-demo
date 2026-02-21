@@ -7,33 +7,44 @@ import { executeTask } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
 
-export const TASK_AGENT_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
+const BASE_SYSTEM_PROMPT = `You are a task delegation agent that breaks complex queries into parallel sub-tasks.
 
 When you receive a complex query that spans multiple domains:
 1. Analyze what information is needed
 2. Create individual tasks using the createTask tool for each distinct sub-query
 3. Tasks will be executed in parallel for efficiency
 
-Available agents for tasks:
-- weather: Weather information
-- hackernews: Hacker News stories and tech news
-- knowledge: Movie information and recommendations
-
 Create one task per distinct information need. Be specific in your task queries.`;
 
-export const createTaskTool = tool({
-  description:
-    "Create a sub-task to be delegated to a specialist agent. Tasks run in parallel.",
-  inputSchema: z.object({
-    agent: z
-      .enum(["weather", "hackernews", "knowledge"])
-      .describe("The specialist agent to handle this task"),
-    query: z.string().describe("The specific query for this task"),
-  }),
-  execute: async ({ agent, query }) => {
-    return { agent, query, status: "queued" };
-  },
-});
+// Agents that should not be delegated to (would cause circular calls or don't support task execution)
+const EXCLUDED_AGENTS = new Set(["supervisor", "task"]);
+
+function getDelegatableAgents() {
+  return agentRegistry.list().filter((a) => !EXCLUDED_AGENTS.has(a.name) && a.tools);
+}
+
+function buildCreateTaskTool() {
+  const agents = getDelegatableAgents();
+  const agentNames = agents.map((a) => a.name) as [string, ...string[]];
+
+  return tool({
+    description:
+      "Create a sub-task to be delegated to a specialist agent. Tasks run in parallel.",
+    inputSchema: z.object({
+      agent: z.enum(agentNames).describe("The specialist agent to handle this task"),
+      query: z.string().describe("The specific query for this task"),
+    }),
+    execute: async ({ agent, query }) => {
+      return { agent, query, status: "queued" };
+    },
+  });
+}
+
+function buildSystemPrompt(basePrompt: string) {
+  const agents = getDelegatableAgents();
+  const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
+  return `${basePrompt}\n\nAvailable agents for tasks:\n${agentList}`;
+}
 
 export function collectTasksFromSteps(steps: any[]): { agent: string; query: string }[] {
   const tasks: { agent: string; query: string }[] = [];
@@ -52,12 +63,14 @@ export function collectTasksFromSteps(steps: any[]): { agent: string; query: str
 
 export async function runTaskAgent(message: string, model?: string) {
   const overallStart = performance.now();
+  const createTaskTool = buildCreateTaskTool();
+  const system = buildSystemPrompt(BASE_SYSTEM_PROMPT);
 
   // Phase 1: Let AI plan the tasks
   const planStart = performance.now();
   const planResult = await generateText({
     model: getModel(model),
-    system: TASK_AGENT_SYSTEM_PROMPT,
+    system,
     prompt: message,
     tools: { createTask: createTaskTool },
     stopWhen: stepCountIs(5),
@@ -99,7 +112,6 @@ Please synthesize these results into a coherent, comprehensive response for the 
 
   const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
 
-  // Aggregate all usage: planning + sub-agents + synthesis
   const subAgentUsages = results
     .map((r) => r.result.usage)
     .filter((u): u is UsageInfo => !!u);
@@ -124,12 +136,23 @@ agentRegistry.register({
   name: "task",
   description: "Parallel task delegation agent that breaks complex queries into sub-tasks",
   toolNames: ["createTask"],
-  type: "stream",
-  defaultSystem: TASK_AGENT_SYSTEM_PROMPT,
-  handler: async (c: Context) => {
+  defaultFormat: "sse",
+  defaultSystem: BASE_SYSTEM_PROMPT,
+  jsonHandler: async (c: Context, { systemPrompt, memoryContext }) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const result = await runTaskAgent(message, model);
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  },
+  sseHandler: async (c: Context, { systemPrompt, memoryContext }) => {
     const { message, conversationId: cid, model } = await c.req.json();
     const convId = generateConversationId(cid);
     const overallStart = performance.now();
+
+    const createTaskTool = buildCreateTaskTool();
+    let system = buildSystemPrompt(systemPrompt);
+    if (memoryContext) {
+      system += `\n\n## Memory Context\n${memoryContext}`;
+    }
 
     return streamSSE(c, async (stream) => {
       let id = 0;
@@ -140,7 +163,7 @@ agentRegistry.register({
       const planStart = performance.now();
       const planResult = await generateText({
         model: getModel(model),
-        system: TASK_AGENT_SYSTEM_PROMPT,
+        system,
         prompt: message,
         tools: { createTask: createTaskTool },
         stopWhen: stepCountIs(5),

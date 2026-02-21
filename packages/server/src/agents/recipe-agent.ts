@@ -64,9 +64,9 @@ agentRegistry.register({
   name: "recipe",
   description: "Structured output recipe agent using generateObject with Zod schema",
   toolNames: [],
-  type: "json",
+  defaultFormat: "json",
   defaultSystem: SYSTEM_PROMPT,
-  handler: async (c: Context) => {
+  jsonHandler: async (c: Context) => {
     const { message, conversationId: cid, model } = await c.req.json();
     const result = await runRecipeAgent(message, model);
     return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);

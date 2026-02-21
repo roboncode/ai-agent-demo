@@ -185,45 +185,37 @@ agentRegistry.register({
   name: "human-in-loop",
   description: "Agent that proposes actions for human approval before executing",
   toolNames: ["sendEmail", "deleteData", "publishContent"],
-  type: "json",
+  defaultFormat: "json",
   defaultSystem: SYSTEM_PROMPT,
-  handler: async (c: Context) => {
+  jsonHandler: async (c: Context) => {
     const { message, model } = await c.req.json();
     const result = await runHumanInLoopAgent(message, model);
     return c.json(result, 200);
   },
-  subRoutes: [
+  sseHandler: async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const convId = generateConversationId(cid);
+    return streamSSE(c, async (stream) => {
+      let id = 0;
+      await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "proposing action" }) });
+      const result = await runHumanInLoopAgent(message, model);
+      for (const action of result.pendingActions) {
+        await stream.writeSSE({ id: String(id++), event: "tool-call", data: JSON.stringify({ toolName: action.action, args: action.parameters }) });
+      }
+      await stream.writeSSE({
+        id: String(id++),
+        event: "proposal",
+        data: JSON.stringify({ actions: result.pendingActions.map((a: any) => ({ id: a.id, action: a.action, parameters: a.parameters })) }),
+      });
+      await stream.writeSSE({ id: String(id++), event: "done", data: JSON.stringify({ conversationId: convId, usage: result.usage }) });
+    });
+  },
+  actions: [
     {
-      subPath: "/stream",
-      method: "post",
-      summary: "Human-in-the-loop agent (streaming)",
-      description: "SSE variant: emits status, tool-call for each proposed action, proposal with IDs, then done",
-      type: "stream",
-      handler: async (c: Context) => {
-        const { message, conversationId: cid, model } = await c.req.json();
-        const convId = generateConversationId(cid);
-        return streamSSE(c, async (stream) => {
-          let id = 0;
-          await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "proposing action" }) });
-          const result = await runHumanInLoopAgent(message, model);
-          for (const action of result.pendingActions) {
-            await stream.writeSSE({ id: String(id++), event: "tool-call", data: JSON.stringify({ toolName: action.action, args: action.parameters }) });
-          }
-          await stream.writeSSE({
-            id: String(id++),
-            event: "proposal",
-            data: JSON.stringify({ actions: result.pendingActions.map((a: any) => ({ id: a.id, action: a.action, parameters: a.parameters })) }),
-          });
-          await stream.writeSSE({ id: String(id++), event: "done", data: JSON.stringify({ conversationId: convId, usage: result.usage }) });
-        });
-      },
-    },
-    {
-      subPath: "/approve",
+      name: "approve",
       method: "post",
       summary: "Approve or reject a pending action",
       description: "Approve or reject an action proposed by the human-in-the-loop agent",
-      type: "json",
       handler: async (c: Context) => {
         const { id, approved } = await c.req.json();
         const result = await approveAction(id, approved);
