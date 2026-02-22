@@ -14,6 +14,7 @@ export const agentRequestSchema = z.object({
   approvedPlan: z.array(z.object({
     agent: z.string(),
     query: z.string(),
+    skills: z.array(z.string()).optional(),
   })).optional().openapi({
     description: "Pre-approved task plan to execute immediately",
   }),

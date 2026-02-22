@@ -31,6 +31,7 @@ import {
   FiGitMerge,
   FiAlertTriangle,
   FiAlertCircle,
+  FiFeather,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -622,6 +623,7 @@ if (decision.approved) await execute(proposal)`,
     layout: "section-intro",
     bullets: [
       "Supervisor Agent",
+      "Skills",
       "Parallel Tasks",
       "Why Custom Agents?",
     ],
@@ -659,6 +661,72 @@ agent.run("Weather in London and top news today?")
           "What is the weather in London and what are the top stories on Hacker News today?",
       },
     },
+  },
+
+  {
+    id: 31,
+    title: "Skills",
+    subtitle: "Behavioral overlays that change how agents respond",
+    icon: FiFeather,
+    category: "Orchestration",
+    section: "IV. Orchestration",
+    bullets: [
+      "Skills are markdown documents that modify HOW an agent approaches a task — not what it knows",
+      "The supervisor auto-detects relevant skills and injects them into specialist agents",
+    ],
+    code: `// Supervisor sees the query and picks skills:
+"Explain quantum computing like I'm five"
+→ supervisor selects skill: "eli5"
+→ routes to knowledge agent with skill attached
+
+// The specialist agent's prompt gets augmented:
+systemPrompt += \`
+# Active Skills
+### eli5
+1. Use everyday analogies
+2. Avoid jargon completely
+3. Start with the big picture
+\`
+
+// Same agent, different behavior — no code changes`,
+    demoButtons: [
+      {
+        label: "With skill — \"Explain simply\" triggers eli5",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor auto-detects the eli5 skill based on the user's phrasing and injects it into the specialist agent's prompt.",
+          body: {
+            message: "Explain how the internet works in simple terms, like I'm five",
+          },
+        },
+      },
+      {
+        label: "With skill — \"TLDR\" triggers concise-summarizer",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor auto-detects the concise-summarizer skill based on \"TLDR\" and injects it into the specialist agent's prompt.",
+          body: {
+            message: "Give me a TLDR of the top Hacker News stories right now",
+          },
+        },
+      },
+      {
+        label: "With skill — concise weather via TLDR",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects concise-summarizer skill from \"brief summary\" phrasing and injects it into the weather agent — same skill, different domain.",
+          body: {
+            message: "Brief summary of the weather in Tokyo and San Francisco — just the key points",
+          },
+        },
+      },
+    ],
   },
 
   {

@@ -21,6 +21,7 @@ export const env = createEnv({
     VOICE_DEFAULT_SPEAKER: z.string().default("alloy"),
     VOICE_RETAIN_AUDIO: z.coerce.boolean().default(false),
     GROQ_API_KEY: z.string().default(""),
+    BRAVE_API_KEY: z.string().default(""),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: false,

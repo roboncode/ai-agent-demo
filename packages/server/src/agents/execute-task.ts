@@ -56,6 +56,7 @@ function errorResult(agent: string, query: string, message: string): TaskResult 
 export async function executeTask(
   agent: string,
   query: string,
+  skills?: string[],
 ): Promise<TaskResult> {
   // Guard 1: Unknown agent
   const registration = agentRegistry.get(agent);
@@ -102,7 +103,23 @@ export async function executeTask(
     events: parentCtx?.events,
   };
 
-  const systemPrompt = agentRegistry.getResolvedPrompt(agent)!;
+  let systemPrompt = agentRegistry.getResolvedPrompt(agent)!;
+
+  // Inject active skills into system prompt
+  if (skills && skills.length > 0) {
+    const { getSkill } = await import("../storage/skill-store.js");
+    const skillSections: string[] = [];
+    for (const skillName of skills) {
+      const skill = await getSkill(skillName);
+      if (skill) {
+        skillSections.push(`### ${skill.name}\n${skill.content}`);
+      }
+    }
+    if (skillSections.length > 0) {
+      systemPrompt += `\n\n# Active Skills\nApply the following behavioral instructions to your response:\n\n${skillSections.join("\n\n")}`;
+    }
+  }
+
   const augmentedTools = { ...registration.tools!, _clarify: CLARIFY_TOOL };
   const augmentedSystem = systemPrompt + CLARIFY_PROMPT_SUFFIX;
 

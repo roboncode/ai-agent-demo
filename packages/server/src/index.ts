@@ -7,6 +7,7 @@ import generateRoutes from "./routes/generate/generate.routes.js";
 import toolsRoutes from "./routes/tools/tools.routes.js";
 import agentsRoutes from "./routes/agents/agents.routes.js";
 import memoryRoutes from "./routes/memory/memory.routes.js";
+import skillsRoutes from "./routes/skills/skills.routes.js";
 import voiceRoutes from "./routes/voice/voice.routes.js";
 import { createWebSocketHandler } from "./routes/ws/ws.route.js";
 import { initializeRegistry } from "./registry/init.js";
@@ -29,6 +30,7 @@ app.route("/api/generate", generateRoutes);
 app.route("/api/tools", toolsRoutes);
 app.route("/api/agents", agentsRoutes);
 app.route("/api/memory", memoryRoutes);
+app.route("/api/skills", skillsRoutes);
 app.route("/api/voice", voiceRoutes);
 
 // In production, serve the built client as static files

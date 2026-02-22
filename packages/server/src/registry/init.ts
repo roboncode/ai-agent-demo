@@ -1,6 +1,7 @@
 import { agentRegistry } from "./agent-registry.js";
 import { loadOverrides } from "../storage/prompt-store.js";
 import { initializeVoice } from "../voice/voice-manager.js";
+import { listSkills } from "../storage/skill-store.js";
 
 export async function initializeRegistry() {
   // Import all tool modules (triggers self-registration)
@@ -25,6 +26,7 @@ export async function initializeRegistry() {
     import("../agents/recipe-agent.js"),
     import("../agents/guardrails-agent.js"),
     import("../agents/web-search-agent.js"),
+    import("../agents/skills-agent.js"),
   ]);
 
   // Load persisted prompt overrides
@@ -38,7 +40,8 @@ export async function initializeRegistry() {
   // Initialize voice subsystem
   initializeVoice();
 
+  const skills = await listSkills();
   console.log(
-    `Registry initialized: ${agentRegistry.list().length} agents, tools loaded`,
+    `Registry initialized: ${agentRegistry.list().length} agents, tools loaded, ${skills.length} skills`,
   );
 }

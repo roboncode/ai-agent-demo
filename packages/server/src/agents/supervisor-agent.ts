@@ -13,14 +13,22 @@ const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queri
 
 When you receive a query:
 1. Analyze what the user is asking about
-2. For simple, single-domain queries: use routeToAgent to delegate immediately
-3. For complex, multi-domain queries: use createTask for each sub-task (they will run in parallel)
-4. Synthesize the results into a coherent response
+2. Consider if any available skills would improve the response quality
+3. For simple, single-domain queries: use routeToAgent to delegate immediately
+4. For complex, multi-domain queries: use createTask for each sub-task (they will run in parallel)
+5. Synthesize the results into a coherent response
 
 Guidelines for choosing between routeToAgent and createTask:
 - Use routeToAgent when the query maps to a single agent or when tasks must be sequential
 - Use createTask when the query spans multiple independent domains that can run in parallel
 - You can mix both in a single response if needed
+
+Guidelines for skill selection:
+- Only attach skills when they clearly match the user's intent or phrasing
+- A query like "explain simply" or "ELI5" should trigger the eli5 skill
+- A query like "give me a summary" or "TLDR" should trigger the concise-summarizer skill
+- Don't attach skills when they would not meaningfully change the response
+- You may attach multiple skills if they complement each other
 
 Always use the routing tools - never answer domain questions directly.`;
 
@@ -111,9 +119,10 @@ function buildRoutingTool(allowedAgents?: string[]) {
     inputSchema: z.object({
       agent: z.enum(agentNames).describe("The specialist agent to route to"),
       query: z.string().describe("The query to send to the agent"),
+      skills: z.array(z.string()).optional().describe("Skill names to activate for this agent (e.g. ['eli5', 'concise-summarizer'])"),
     }),
-    execute: async ({ agent, query }) => {
-      const result = await executeTask(agent, query);
+    execute: async ({ agent, query, skills }) => {
+      const result = await executeTask(agent, query, skills);
       return result.result;
     },
   });
@@ -132,29 +141,37 @@ function buildCreateTaskTool(allowedAgents?: string[]) {
     inputSchema: z.object({
       agent: z.enum(agentNames).describe("The specialist agent to handle this task"),
       query: z.string().describe("The specific query for this task"),
+      skills: z.array(z.string()).optional().describe("Skill names to activate for this agent (e.g. ['eli5', 'concise-summarizer'])"),
     }),
     // No execute — deferred for parallel batching
   });
 }
 
-function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
+async function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
   const agents = getRoutableAgents(allowedAgents);
   const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
 
   console.log(`[supervisor] Routable agents (${agents.length}):`, agents.map((a) => a.name));
 
-  return `${basePrompt}\n\nAvailable agents:\n${agentList}`;
+  let prompt = `${basePrompt}\n\nAvailable agents:\n${agentList}`;
+
+  // Append skill summaries so the supervisor knows what skills exist
+  const { getSkillSummaries } = await import("../storage/skill-store.js");
+  const skillSummaries = await getSkillSummaries();
+  prompt += `\n\nAvailable skills (pass skill names in the "skills" parameter when routing):\n${skillSummaries}`;
+
+  return prompt;
 }
 
 /** Extract createTask calls from generateText steps */
-function collectTasksFromSteps(steps: any[]): { agent: string; query: string }[] {
-  const tasks: { agent: string; query: string }[] = [];
+function collectTasksFromSteps(steps: any[]): { agent: string; query: string; skills?: string[] }[] {
+  const tasks: { agent: string; query: string; skills?: string[] }[] = [];
   for (const step of steps) {
     for (const tc of step.toolCalls) {
       if (tc.toolName === "createTask" && (tc as any).input) {
-        const input = (tc as any).input as { agent?: string; query?: string };
+        const input = (tc as any).input as { agent?: string; query?: string; skills?: string[] };
         if (input.agent && input.query) {
-          tasks.push({ agent: input.agent, query: input.query });
+          tasks.push({ agent: input.agent, query: input.query, skills: input.skills });
         }
       }
     }
@@ -168,7 +185,7 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
   const startTime = performance.now();
   const routeToAgentTool = buildRoutingTool(allowedAgents);
   const createTaskTool = buildCreateTaskTool(allowedAgents);
-  const system = buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, allowedAgents);
+  const system = await buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, allowedAgents);
 
   const result = await generateText({
     model: getModel(model),
@@ -209,7 +226,7 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
 
   if (tasks.length > 0) {
     const results = await Promise.all(
-      tasks.map((task) => executeTask(task.agent, task.query))
+      tasks.map((task) => executeTask(task.agent, task.query, task.skills))
     );
 
     // Check if any task needs clarification (parallel path)
@@ -304,7 +321,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
     const autonomous = reqAutonomous ?? defaultAutonomous;
     const overallStart = performance.now();
 
-    let system = buildSystemPrompt(systemPrompt, allowedAgents);
+    let system = await buildSystemPrompt(systemPrompt, allowedAgents);
     if (memoryContext) {
       system += `\n\n## Memory Context\n${memoryContext}`;
     }
@@ -320,7 +337,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
 
         // Execute approved tasks in parallel — bus events stream in real-time
         const results = await Promise.all(
-          approvedPlan.map((task: { agent: string; query: string }) => executeTask(task.agent, task.query))
+          approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
         );
 
         // Flush any queued bus events before continuing
@@ -453,7 +470,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
 
         // Phase 2: Execute all tasks in parallel — bus events stream in real-time
         const results = await Promise.all(
-          tasks.map((task) => executeTask(task.agent, task.query))
+          tasks.map((task) => executeTask(task.agent, task.query, task.skills))
         );
         await writer.flush();
 
@@ -552,7 +569,7 @@ function buildJsonHandler(allowedAgents?: string[], defaultAutonomous = true) {
     if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
       const overallStart = performance.now();
       const results = await Promise.all(
-        approvedPlan.map((task: { agent: string; query: string }) => executeTask(task.agent, task.query))
+        approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
       );
 
       const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
@@ -575,7 +592,7 @@ function buildJsonHandler(allowedAgents?: string[], defaultAutonomous = true) {
       }, 200);
     }
 
-    let system = buildSystemPrompt(systemPrompt, allowedAgents);
+    let system = await buildSystemPrompt(systemPrompt, allowedAgents);
     if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
 
     const result = await runSupervisorAgent(message, model, allowedAgents, autonomous);
