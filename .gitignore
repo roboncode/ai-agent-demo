@@ -7,5 +7,6 @@ packages/server/data/*
 !packages/server/data/memory/
 packages/server/data/memory/*
 !packages/server/data/memory/.gitkeep
+!packages/server/data/skills/
 *.png
 .playwright-mcp

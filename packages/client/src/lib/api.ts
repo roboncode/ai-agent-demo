@@ -80,6 +80,48 @@ export async function postSse(
   return res;
 }
 
+export interface TranscribeResult {
+  text: string;
+  language?: string;
+  duration?: number;
+}
+
+export async function transcribeAudio(audioBlob: Blob): Promise<TranscribeResult> {
+  const form = new FormData();
+  form.append("audio", audioBlob, "recording.webm");
+
+  const res = await fetch(`${getBaseUrl()}/api/voice/transcribe?provider=groq`, {
+    method: "POST",
+    headers: { "X-API-Key": env.VITE_API_KEY },
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? `Transcribe failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function speakText(text: string, speaker = "fable"): Promise<Blob> {
+  const res = await fetch(`${getBaseUrl()}/api/voice/speak`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": env.VITE_API_KEY,
+    },
+    body: JSON.stringify({ text, speaker, format: "mp3", save: false }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? `Speak failed: ${res.status}`);
+  }
+
+  return res.blob();
+}
+
 let _streamMode: "sse" | "ws" | null = null;
 
 export function getStreamMode(): "sse" | "ws" {

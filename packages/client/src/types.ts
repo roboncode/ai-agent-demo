@@ -83,6 +83,12 @@ export interface SimulateStreamDemoConfig {
 
 export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | DeleteDemoConfig | SimulateStreamDemoConfig;
 
+export interface VisualProps {
+  onRun?: (demo?: DemoConfig) => void;
+  isRunning?: boolean;
+  lastResponseText?: string;
+}
+
 export interface SlideConfig {
   id: number;
   title: string;

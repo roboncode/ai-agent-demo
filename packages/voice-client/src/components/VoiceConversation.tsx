@@ -265,7 +265,7 @@ export default function VoiceConversation() {
       if (cached) {
         blob = cached;
       } else {
-        const result = await speak(text, { speaker: settings.speaker, save: true });
+        const result = await speak(text, { speaker: settings.speaker });
         blob = result.blob;
         audioCache.set(exchangeId, blob);
         if (result.audioId) {

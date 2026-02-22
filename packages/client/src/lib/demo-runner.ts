@@ -251,7 +251,9 @@ async function runSingleSseStream(
       }
       case "skill:inject": {
         const skills = (data.skills as string[]).join(", ");
-        cb.addLine("status", `-- skills: ${skills} → ${data.agent} --`);
+        const phaseLabel = data.phase ?? "query";
+        const target = phaseLabel === "response" ? "→ synthesis" : `→ ${data.agent}`;
+        cb.addLine("status", `-- skills: ${skills} [${phaseLabel}] ${target} --`);
         break;
       }
       case "delegate:start": {

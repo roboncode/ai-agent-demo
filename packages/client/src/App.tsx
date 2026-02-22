@@ -32,6 +32,10 @@ function App() {
   const hasDemo = createMemo(() => !!currentSlide().demo || !!currentSlide().demoButtons?.length);
   // Derived: lines for the currently visible slide
   const lines = createMemo(() => slideLines()[slideIndex()] ?? []);
+  // Derived: concatenated text lines for TTS playback
+  const lastResponseText = createMemo(() =>
+    lines().filter((l) => l.type === "text").map((l) => l.content).join("\n"),
+  );
 
   let lineCounter = 0;
 
@@ -186,6 +190,7 @@ function App() {
               fullWidth={!hasDemo()}
               onRun={handleRun}
               isRunning={isRunning()}
+              lastResponseText={lastResponseText()}
             />
           }
           terminal={

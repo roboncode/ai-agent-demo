@@ -47,6 +47,7 @@ export interface TaskResult {
     toolsUsed: string[];
     usage?: UsageInfo;
   };
+  responseSkills?: string[];
 }
 
 function errorResult(agent: string, query: string, message: string): TaskResult {
@@ -96,16 +97,24 @@ export async function executeTask(
 
   // Resolve skills before emitting events so skill:inject precedes delegate:start
   let systemPrompt = agentRegistry.getResolvedPrompt(agent)!;
-  const loadedSkillNames: string[] = [];
+  const querySkillNames: string[] = [];
+  const responseSkillNames: string[] = [];
 
   if (skills && skills.length > 0) {
     const { getSkill } = await import("../storage/skill-store.js");
     const skillSections: string[] = [];
     for (const skillName of skills) {
       const skill = await getSkill(skillName);
-      if (skill) {
+      if (!skill) continue;
+
+      // query/both → inject into specialist prompt
+      if (skill.phase === "query" || skill.phase === "both") {
         skillSections.push(`### ${skill.name}\n${skill.content}`);
-        loadedSkillNames.push(skill.name);
+        querySkillNames.push(skill.name);
+      }
+      // response/both → collect for synthesis
+      if (skill.phase === "response" || skill.phase === "both") {
+        responseSkillNames.push(skill.name);
       }
     }
     if (skillSections.length > 0) {
@@ -114,8 +123,8 @@ export async function executeTask(
   }
 
   // Emit skill:inject before delegate:start so watchers see skills first
-  if (loadedSkillNames.length > 0) {
-    bus?.emit("skill:inject", { agent, skills: loadedSkillNames });
+  if (querySkillNames.length > 0) {
+    bus?.emit("skill:inject", { agent, skills: querySkillNames, phase: "query" });
   }
   bus?.emit("delegate:start", { from, to: agent, query });
 
@@ -140,5 +149,10 @@ export async function executeTask(
     summary: result.response.slice(0, 200),
   });
 
-  return { agent, query, result };
+  return {
+    agent,
+    query,
+    result,
+    ...(responseSkillNames.length > 0 && { responseSkills: responseSkillNames }),
+  };
 }

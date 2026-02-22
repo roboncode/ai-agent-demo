@@ -16,6 +16,7 @@ interface Props {
   fullWidth: boolean;
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
+  lastResponseText?: string;
 }
 
 /* ─── Section Intro Layout ──────────────────────────────────────── */
@@ -412,7 +413,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Custom visual — takes priority over code block */}
         <Show when={props.slide.visual}>
-          {createComponent(props.slide.visual!, {})}
+          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning, lastResponseText: props.lastResponseText })}
         </Show>
 
         {/* Code snippet — only if no custom visual */}
@@ -429,13 +430,13 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Multiple demo buttons */}
         <Show when={props.slide.demoButtons?.length}>
-          <div class="mt-8 flex w-full gap-3">
+          <div class="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <For each={props.slide.demoButtons}>
               {(btn) => (
                 <button
                   onClick={() => props.onRun?.(btn.demo)}
                   disabled={props.isRunning}
-                  class="demo-hint btn-glow flex flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  class="demo-hint btn-glow flex cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span class="flex-shrink-0 text-accent"><FiPlay size={22} /></span>
                   <span class="font-body text-left text-sm leading-snug text-accent-dim">{btn.label}</span>

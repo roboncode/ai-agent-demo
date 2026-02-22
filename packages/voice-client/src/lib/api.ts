@@ -65,7 +65,7 @@ export async function speak(text: string, options?: SpeakOptions): Promise<Speak
       speaker: options?.speaker,
       format: options?.format ?? "mp3",
       speed: options?.speed,
-      save: options?.save ?? true,
+      save: options?.save ?? false,
     }),
   });
 

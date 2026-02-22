@@ -25,6 +25,12 @@ When helping users create or edit skills, follow these guidelines:
 - Good: "Use everyday analogies", "Number your steps", "Lead with the direct answer"
 - Bad: "You know about quantum physics" (that's knowledge, not behavior)
 
+**Phase** controls when the skill is applied in the supervisor pipeline:
+- "query" — injected into the specialist agent (affects HOW it works, e.g. research behavior)
+- "response" — injected during synthesis (affects output STYLE, e.g. simplify, summarize)
+- "both" — applied at both stages
+- Default is "response" if omitted
+
 **Naming** must be kebab-case (lowercase, hyphens between words):
 - Good: "step-by-step-reasoning", "eli5", "formal-writing"
 - Bad: "StepByStep", "my skill", "ELI5"

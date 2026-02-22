@@ -8,6 +8,7 @@ import ContextIntelligenceVisual from "../components/ContextIntelligenceVisual";
 import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
 import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
 import A2UIVisual from "../components/A2UIVisual";
+import VoiceVisual from "../components/VoiceVisual";
 import {
   FiCpu,
   FiMessageSquare,
@@ -35,6 +36,7 @@ import {
   FiFeather,
   FiMonitor,
   FiGlobe,
+  FiMic,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -707,18 +709,6 @@ systemPrompt += \`
         },
       },
       {
-        label: "With skill — \"TLDR\" triggers concise-summarizer",
-        demo: {
-          type: "sse",
-          endpoint: "/api/agents/supervisor",
-          systemPrompt:
-            "Supervisor auto-detects the concise-summarizer skill based on \"TLDR\" and injects it into the specialist agent's prompt.",
-          body: {
-            message: "Give me a TLDR of the top Hacker News stories right now",
-          },
-        },
-      },
-      {
         label: "With skill — concise weather via TLDR",
         demo: {
           type: "sse",
@@ -727,6 +717,54 @@ systemPrompt += \`
             "Supervisor detects concise-summarizer skill from \"brief summary\" phrasing and injects it into the weather agent — same skill, different domain.",
           body: {
             message: "Brief summary of the weather in Tokyo and San Francisco — just the key points",
+          },
+        },
+      },
+      {
+        label: "Multi-skill — eli5 + step-by-step reasoning",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects both eli5 and step-by-step-reasoning skills. eli5 [response] applies at synthesis, step-by-step-reasoning [response] applies at synthesis too.",
+          body: {
+            message: "Explain step by step how weather forecasting works, like I'm five",
+          },
+        },
+      },
+      {
+        label: "Tone — sarcastic weather report",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects tone-sarcastic skill from the user's request for snark. The tone skill [response] applies at synthesis, delivering weather facts with dry wit.",
+          body: {
+            message: "Give me the weather in London, but make it sarcastic",
+          },
+        },
+      },
+      {
+        label: "Query skill — fact-check a claim",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects fact-check skill. This is a query-phase skill [query] — it changes how the specialist agent gathers information, making it verify claims and look for counter-evidence.",
+          body: {
+            message: "Fact check this: the Great Wall of China is visible from space",
+          },
+        },
+      },
+      {
+        label: "Tone — disagreeable movie recommendation",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects tone-disagreeable skill. The tone [response] applies at synthesis — the agent gives a real recommendation but challenges the user's assumptions along the way.",
+          body: {
+            message: "Recommend me a good movie, but be disagreeable about it",
           },
         },
       },
@@ -945,6 +983,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "MCP",
       "Workflows",
       "A2UI: Agent-to-User Interface",
+      "Voice: A Natural Interface",
     ],
   },
 
@@ -1002,6 +1041,26 @@ agent.run("Find the first 15 Fibonacci primes")
     },
   },
 
+  {
+    id: 34,
+    title: "Voice: A Natural Interface",
+    subtitle: "Talk to your agent like you talk to a colleague",
+    icon: FiMic,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [
+      "Voice removes the keyboard barrier -- speak naturally, get structured results",
+      "The pipeline: record audio, transcribe to text, route through the supervisor",
+      "Same agent infrastructure, different input modality -- no agent changes needed",
+    ],
+    visual: VoiceVisual,
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/supervisor",
+      body: { message: "(voice)" },
+    },
+  },
+
   // ─── CONCLUSION ────────────────────────────────────────────────
   {
     id: 30,
@@ -1015,7 +1074,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "Patterns like memory, guardrails, and retries make agents reliable",
       "Orchestration lets multiple agents collaborate and parallelize",
       "Production demands auth, injection defense, cost tracking, and observability",
-      "Beyond the agent: standards (MCP), workflows, and rich user interfaces (A2UI)",
+      "Beyond the agent: standards (MCP), workflows, rich UIs (A2UI), and voice",
       "Start simple, measure everything, add complexity only when you need it",
     ],
   },

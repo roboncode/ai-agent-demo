@@ -4,6 +4,7 @@ export const skillMetaSchema = z.object({
   name: z.string(),
   description: z.string(),
   tags: z.array(z.string()),
+  phase: z.enum(["query", "response", "both"]),
 });
 
 export const skillSchema = skillMetaSchema.extend({
@@ -20,7 +21,7 @@ export const skillCreateSchema = z.object({
     .openapi({ example: "my-skill" }),
   content: z.string().min(1).openapi({
     example:
-      "---\nname: my-skill\ndescription: Use when ...\ntags: [tag1]\n---\n# My Skill\n\n## Instructions\n...",
+      "---\nname: my-skill\ndescription: Use when ...\ntags: [tag1]\nphase: response\n---\n# My Skill\n\n## Instructions\n...",
     description: "Full markdown content including frontmatter",
   }),
 });
@@ -28,7 +29,7 @@ export const skillCreateSchema = z.object({
 export const skillUpdateSchema = z.object({
   content: z.string().min(1).openapi({
     example:
-      "---\nname: my-skill\ndescription: Use when ...\ntags: [tag1]\n---\n# My Skill\n\n## Instructions\n...",
+      "---\nname: my-skill\ndescription: Use when ...\ntags: [tag1]\nphase: response\n---\n# My Skill\n\n## Instructions\n...",
     description: "Full markdown content including frontmatter",
   }),
 });

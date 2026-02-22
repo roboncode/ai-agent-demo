@@ -3,7 +3,7 @@ import { z } from "zod";
 import { streamSSE } from "hono/streaming";
 import type { Context } from "hono";
 import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo } from "../lib/ai-provider.js";
-import { executeTask } from "./execute-task.js";
+import { executeTask, type TaskResult } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
 import { getOrchestratorAgents, getEventBus } from "../lib/delegation-context.js";
@@ -29,6 +29,7 @@ Guidelines for skill selection:
 - A query like "give me a summary" or "TLDR" should trigger the concise-summarizer skill
 - Don't attach skills when they would not meaningfully change the response
 - You may attach multiple skills if they complement each other
+- Each skill has a phase (query/response/both) — this is handled automatically, just select the right skills
 
 Always use the routing tools - never answer domain questions directly.`;
 
@@ -123,8 +124,8 @@ function buildRoutingTool(allowedAgents?: string[]) {
       skills: z.array(z.string()).optional().describe("Skill names to activate for this agent (e.g. ['eli5', 'concise-summarizer'])"),
     }),
     execute: async ({ agent, query, skills }) => {
-      const result = await executeTask(agent, query, skills);
-      return result.result;
+      const taskResult = await executeTask(agent, query, skills);
+      return { ...taskResult.result, _responseSkills: taskResult.responseSkills ?? [] };
     },
   });
 }
@@ -178,6 +179,27 @@ function collectTasksFromSteps(steps: any[]): { agent: string; query: string; sk
     }
   }
   return tasks;
+}
+
+// ── Synthesis skill helpers ──────────────────────────────────────
+
+/** Collect responseSkills from an array of TaskResults, deduped */
+function collectResponseSkills(results: TaskResult[]): string[] {
+  const all = results.flatMap((r) => r.responseSkills ?? []);
+  return [...new Set(all)];
+}
+
+/** Load response-phase skills and build a system prompt for synthesis */
+async function buildSynthesisContext(skillNames: string[]): Promise<string | undefined> {
+  if (skillNames.length === 0) return undefined;
+  const { getSkill } = await import("../storage/skill-store.js");
+  const sections: string[] = [];
+  for (const name of [...new Set(skillNames)]) {
+    const skill = await getSkill(name);
+    if (skill) sections.push(`### ${skill.name}\n${skill.content}`);
+  }
+  if (sections.length === 0) return undefined;
+  return `# Active Skills\nApply the following behavioral instructions to your response:\n\n${sections.join("\n\n")}`;
 }
 
 // ── JSON handler (non-streaming) ────────────────────────────────
@@ -250,11 +272,20 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
       }
     }
 
+    const responseSkills = collectResponseSkills(results);
+    const synthesisSystem = await buildSynthesisContext(responseSkills);
+
+    const bus = getEventBus();
+    if (responseSkills.length > 0) {
+      bus?.emit("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+    }
+
     const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
     const synthesisStart = performance.now();
     const synthesisResult = await generateText({
       model: getModel(model),
+      ...(synthesisSystem && { system: synthesisSystem }),
       prompt: synthesisPrompt,
     });
     const synthUsage = extractUsage(synthesisResult, synthesisStart);
@@ -345,12 +376,18 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         await writer.flush();
 
         // Synthesis
+        const responseSkills = collectResponseSkills(results);
+        const synthesisSystem = await buildSynthesisContext(responseSkills);
+        if (responseSkills.length > 0) {
+          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+        }
+
         await writer.write("agent:think", { text: "Synthesizing results..." });
 
         const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
         const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), prompt: synthesisPrompt });
+        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
 
         for await (const text of synthesisResult.textStream) {
           await writer.write("text-delta", { text });
@@ -476,12 +513,18 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         await writer.flush();
 
         // Phase 3: Synthesis
+        const responseSkills = collectResponseSkills(results);
+        const synthesisSystem = await buildSynthesisContext(responseSkills);
+        if (responseSkills.length > 0) {
+          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+        }
+
         await writer.write("agent:think", { text: "Synthesizing results..." });
 
         const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
         const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), prompt: synthesisPrompt });
+        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
 
         for await (const text of synthesisResult.textStream) {
           await writer.write("text-delta", { text });
@@ -516,13 +559,19 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
 
       if (routeResults.length > 0) {
         // Synthesis — stream the response (consistent with createTask path)
+        const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?._responseSkills ?? []))];
+        const synthesisSystem = await buildSynthesisContext(responseSkills);
+        if (responseSkills.length > 0) {
+          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+        }
+
         await writer.write("agent:think", { text: "Synthesizing results..." });
 
         const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
         const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
         const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), prompt: synthesisPrompt });
+        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
 
         for await (const text of synthesisResult.textStream) {
           await writer.write("text-delta", { text });
@@ -573,10 +622,18 @@ function buildJsonHandler(allowedAgents?: string[], defaultAutonomous = true) {
         approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
       );
 
+      const responseSkills = collectResponseSkills(results);
+      const synthesisSystem = await buildSynthesisContext(responseSkills);
+
+      const bus = getEventBus();
+      if (responseSkills.length > 0) {
+        bus?.emit("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+      }
+
       const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
 
       const synthesisStart = performance.now();
-      const synthesisResult = await generateText({ model: getModel(model), prompt: synthesisPrompt });
+      const synthesisResult = await generateText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
       const synthUsage = extractUsage(synthesisResult, synthesisStart);
 
       const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);

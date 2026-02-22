@@ -4,10 +4,15 @@ import { join } from "node:path";
 
 const SKILLS_DIR = new URL("../../data/skills", import.meta.url).pathname;
 
+export type SkillPhase = "query" | "response" | "both";
+
+const VALID_PHASES = new Set<SkillPhase>(["query", "response", "both"]);
+
 export interface SkillMeta {
   name: string;
   description: string;
   tags: string[];
+  phase: SkillPhase;
 }
 
 export interface Skill extends SkillMeta {
@@ -78,12 +83,20 @@ export function parseFrontmatter(raw: string): {
   return { meta, body: match[2] };
 }
 
+function parsePhase(value: unknown): SkillPhase {
+  if (typeof value === "string" && VALID_PHASES.has(value as SkillPhase)) {
+    return value as SkillPhase;
+  }
+  return "response";
+}
+
 function buildSkill(name: string, raw: string): Skill {
   const { meta, body } = parseFrontmatter(raw);
   return {
     name: (meta.name as string) || name,
     description: (meta.description as string) || "",
     tags: Array.isArray(meta.tags) ? meta.tags : [],
+    phase: parsePhase(meta.phase),
     content: body.trim(),
     rawContent: raw,
     updatedAt: new Date().toISOString(),
@@ -107,6 +120,7 @@ export async function listSkills(): Promise<SkillMeta[]> {
       name: (meta.name as string) || entry.name,
       description: (meta.description as string) || "",
       tags: Array.isArray(meta.tags) ? meta.tags : [],
+      phase: parsePhase(meta.phase),
     });
   }
 
@@ -163,5 +177,5 @@ export function deleteSkill(name: string): Promise<boolean> {
 export async function getSkillSummaries(): Promise<string> {
   const skills = await listSkills();
   if (skills.length === 0) return "No skills available.";
-  return skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  return skills.map((s) => `- ${s.name} [${s.phase}]: ${s.description}`).join("\n");
 }
