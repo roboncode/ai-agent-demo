@@ -35,7 +35,6 @@ import {
   FiAlertCircle,
   FiFeather,
   FiMonitor,
-  FiGlobe,
   FiMic,
 } from "solid-icons/fi";
 
