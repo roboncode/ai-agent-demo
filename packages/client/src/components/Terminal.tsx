@@ -20,6 +20,8 @@ interface Props {
   activeConversationId?: string | null;
   /** Callback to cancel the active stream */
   onStop?: () => void;
+  /** Callback to clear conversation history */
+  onClearHistory?: () => void;
 }
 
 const SCROLL_THRESHOLD = 60; // px from bottom to be considered "at bottom"
@@ -193,8 +195,21 @@ const Terminal: Component<Props> = (props) => {
           </span>
         </div>
 
-        {/* Right side of titlebar: stop + TTS buttons */}
+        {/* Right side of titlebar: clear + stop + TTS buttons */}
         <div class="ml-auto flex items-center gap-1">
+          <Show when={props.onClearHistory && props.lines.length > 0}>
+            <button
+              onClick={() => props.onClearHistory?.()}
+              class="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-muted/50 transition-colors hover:text-red-400"
+              title="Clear conversation"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          </Show>
+
           <Show when={(props.isRunning || props.isStreaming) && props.activeConversationId && props.onStop}>
             <button
               onClick={() => props.onStop?.()}

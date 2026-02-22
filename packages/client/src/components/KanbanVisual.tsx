@@ -1,8 +1,8 @@
-import { type Component, For, Show, createSignal, createEffect, onMount } from "solid-js";
-
+import { type Component, For, Show, createSignal, createEffect, onMount, batch } from "solid-js";
 import type { VisualProps, SseDemoConfig } from "../types";
 import { useAudioRecorder } from "../lib/useAudioRecorder";
-import { transcribeAudio, postJson } from "../lib/api";
+import { transcribeAudio, postJson, getJson, deleteJson } from "../lib/api";
+
 interface Task {
   id: string;
   title: string;
@@ -11,6 +11,11 @@ interface Task {
 }
 
 type MicStatus = "idle" | "recording" | "transcribing";
+
+const CONVERSATION_ID = "conv_kanban_taskboard";
+// Module-level guard: prevents re-fetching if the component is recreated
+// by SolidJS reactivity (addLine → lastResponseText change → content prop re-eval)
+let conversationRestored = false;
 
 const COLUMNS: { key: Task["status"]; label: string; accent: string }[] = [
   { key: "todo", label: "To Do", accent: "border-t-blue-400/60" },
@@ -22,7 +27,7 @@ const KanbanVisual: Component<VisualProps> = (props) => {
   const { isRecording, error: recorderError, start, stop } = useAudioRecorder();
   const [tasks, setTasks] = createSignal<Task[]>([]);
   const [status, setStatus] = createSignal<MicStatus>("idle");
-  const [error, setError] = createSignal<string | null>(null);
+  const [_error, setError] = createSignal<string | null>(null);
 
   async function refreshTasks() {
     try {
@@ -33,11 +38,29 @@ const KanbanVisual: Component<VisualProps> = (props) => {
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     refreshTasks();
+    // Restore conversation history into the terminal (once per page session)
+    if (!conversationRestored && props.onAddLine) {
+      conversationRestored = true;
+      try {
+        const conv = await getJson<{
+          messages: Array<{ role: "user" | "assistant"; content: string }>;
+        }>(`/api/conversations/${CONVERSATION_ID}`);
+        if (conv?.messages?.length) {
+          batch(() => {
+            for (const msg of conv.messages) {
+              props.onAddLine!(msg.role === "user" ? "user-prompt" : "text", msg.content);
+            }
+          });
+        }
+      } catch {
+        // No conversation yet — that's fine
+      }
+    }
   });
 
-  // Refresh board when agent stream finishes
+  // When agent stream finishes: refresh board
   let wasRunning = false;
   createEffect(() => {
     const running = props.isRunning ?? false;
@@ -64,10 +87,12 @@ const KanbanVisual: Component<VisualProps> = (props) => {
       setStatus("transcribing");
       const blob = await stop();
       const result = await transcribeAudio(blob);
+
       const demo: SseDemoConfig = {
         type: "sse",
         endpoint: "/api/agents/taskboard",
-        body: { message: result.text },
+        keepHistory: true,
+        body: { message: result.text, conversationId: CONVERSATION_ID },
       };
       props.onRun?.(demo);
       setStatus("idle");
@@ -76,6 +101,17 @@ const KanbanVisual: Component<VisualProps> = (props) => {
       setStatus("idle");
     }
   }
+
+  // Detect terminal being cleared (e.g. from Terminal header button) and clean up server-side
+  let hadLines = false;
+  createEffect(() => {
+    const hasContent = !!(props.lastResponseText);
+    if (hadLines && !hasContent) {
+      conversationRestored = false;
+      deleteJson(`/api/conversations/${CONVERSATION_ID}/messages`).catch(() => {});
+    }
+    hadLines = hasContent;
+  });
 
   const isRec = () => status() === "recording";
   const isTranscribing = () => status() === "transcribing";

@@ -1,6 +1,6 @@
 import { type Component, For, Show, createComponent } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import type { SlideConfig, DemoConfig } from "../types";
+import type { SlideConfig, DemoConfig, TerminalLineType } from "../types";
 import {
   badgeClass,
   sectionAccentColor,
@@ -16,6 +16,9 @@ interface Props {
   fullWidth: boolean;
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
+  lastResponseText?: string;
+  onAddLine?: (type: TerminalLineType, content: string) => void;
+  onClear?: () => void;
 }
 
 /* ─── Section Intro Layout ──────────────────────────────────────── */
@@ -412,7 +415,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Custom visual — takes priority over code block */}
         <Show when={props.slide.visual}>
-          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning })}
+          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning, lastResponseText: props.lastResponseText, onAddLine: props.onAddLine, onClear: props.onClear })}
         </Show>
 
         {/* Code snippet — only if no custom visual */}

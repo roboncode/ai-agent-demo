@@ -10,6 +10,10 @@ import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
 import A2UIVisual from "../components/A2UIVisual";
 import VoiceVisual from "../components/VoiceVisual";
 import KanbanVisual from "../components/KanbanVisual";
+import ThinkingBeyondVisual from "../components/ThinkingBeyondVisual";
+import EvaluationFeedbackVisual from "../components/EvaluationFeedbackVisual";
+import DeploymentScalingVisual from "../components/DeploymentScalingVisual";
+import ChatWindowVisual from "../components/ChatWindow";
 import {
   FiCpu,
   FiMessageSquare,
@@ -38,6 +42,9 @@ import {
   FiMonitor,
   FiMic,
   FiCheckSquare,
+  FiCompass,
+  FiThumbsUp,
+  FiServer,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -51,11 +58,11 @@ export const slides: SlideConfig[] = [
     layout: "intro",
     bullets: [
       "Foundations — LLMs, prompts, and streaming",
-      "From LLM to Agent — Tools, decisions, and knowledge",
+      "From LLM to Agent — Tools, decisions, knowledge, and MCP",
       "Agent Patterns — Memory, guardrails, error handling",
-      "Orchestration — Supervisors and parallel tasks",
-      "Production — Security, cost, and deployment",
-      "Beyond the Agent — Standards, workflows, and user interfaces",
+      "Orchestration — Supervisors, parallel tasks, and workflows",
+      "Production — Security, cost, evaluation, and deployment",
+      "Beyond the Agent — Conversation, voice, and the bigger picture",
     ],
   },
 
@@ -196,6 +203,7 @@ data: {"usage": {"totalTokens": 142}}`,
       "What Is a Tool?",
       "Giving Your Agent Hands",
       "Knowledge Base",
+      "MCP",
     ],
   },
 
@@ -344,6 +352,20 @@ agent.run("Compare Tokyo and New York weather")
           "Who are the top three main characters in the TV show Lost and which actors played them?",
       },
     },
+  },
+
+  {
+    id: 18,
+    title: "MCP",
+    subtitle: "USB-C for AI tools",
+    icon: FiLink,
+    category: "From LLM to Agent",
+    section: "II. From LLM to Agent",
+    bullets: [
+      "A standard for AI to discover and use tools — no hardcoding",
+      "Any MCP-compatible tool works with any MCP-compatible agent",
+    ],
+    visual: McpDiscoveryVisual,
   },
 
   // ─── SECTION III: AGENT PATTERNS ──────────────────────────────
@@ -632,6 +654,7 @@ if (decision.approved) await execute(proposal)`,
       "Supervisor Agent",
       "Skills",
       "Parallel Tasks",
+      "Workflows",
       "Why Custom Agents?",
     ],
   },
@@ -807,6 +830,19 @@ const [weather, news, movie] = await Promise.all([
   },
 
   {
+    id: 19,
+    title: "Workflows",
+    subtitle: "Simple blocks, powerful compositions",
+    icon: FiGitMerge,
+    category: "Orchestration",
+    section: "IV. Orchestration",
+    bullets: [
+      "An agent is one step. A workflow chains agents with logic.",
+    ],
+    visual: WorkflowPipelineVisual,
+  },
+
+  {
     id: 14,
     title: "Why Custom Agents?",
     subtitle: "General-purpose AI vs. your domain expert",
@@ -834,6 +870,8 @@ const [weather, news, movie] = await Promise.all([
       "Sandboxes",
       "Observability & Cost",
       "Choosing the Right Model",
+      "Evaluation & Feedback",
+      "Deployment & Scaling",
     ],
   },
 
@@ -972,48 +1010,60 @@ agent.run("Find the first 15 Fibonacci primes")
     visual: ChoosingModelVisual,
   },
 
+  {
+    id: 37,
+    title: "Evaluation & Feedback",
+    subtitle: "How do you know your agent is any good?",
+    icon: FiThumbsUp,
+    category: "Production",
+    section: "V. Production Concerns",
+    bullets: [
+      "Without evaluation, you're flying blind -- every prompt change is a guess",
+      "Build a loop: test against known inputs, measure quality, collect user feedback, iterate",
+    ],
+    visual: EvaluationFeedbackVisual,
+  },
+
+  {
+    id: 38,
+    title: "Deployment & Scaling",
+    subtitle: "Where does your agent actually run?",
+    icon: FiServer,
+    category: "Production",
+    section: "V. Production Concerns",
+    bullets: [
+      "The right deployment target depends on latency, cost, privacy, and traffic patterns",
+      "Most teams start cloud-hosted, then optimize edge or self-hosted for specific needs",
+    ],
+    visual: DeploymentScalingVisual,
+  },
+
   // ─── SECTION VI: BEYOND THE AGENT ────────────────────────────
   {
     id: 33,
     title: "Beyond the Agent",
-    subtitle: "Standards, workflows, and user interfaces",
+    subtitle: "User interfaces, voice, and the bigger picture",
     category: "Beyond the Agent",
     section: "VI. Beyond the Agent",
     layout: "section-intro",
     bullets: [
-      "MCP",
-      "Workflows",
+      "Thinking Beyond the Agent",
       "A2UI: Agent-to-User Interface",
+      "Conversation: Multi-Turn Chat",
       "Voice: A Natural Interface",
       "Daily Driver",
     ],
   },
 
   {
-    id: 18,
-    title: "MCP",
-    subtitle: "USB-C for AI tools",
-    icon: FiLink,
+    id: 36,
+    title: "Thinking Beyond the Agent",
+    subtitle: "Start with your problems, not the technology",
+    icon: FiCompass,
     category: "Beyond the Agent",
     section: "VI. Beyond the Agent",
-    bullets: [
-      "A standard for AI to discover and use tools — no hardcoding",
-      "Any MCP-compatible tool works with any MCP-compatible agent",
-    ],
-    visual: McpDiscoveryVisual,
-  },
-
-  {
-    id: 19,
-    title: "Workflows",
-    subtitle: "Simple blocks, powerful compositions",
-    icon: FiGitMerge,
-    category: "Beyond the Agent",
-    section: "VI. Beyond the Agent",
-    bullets: [
-      "An agent is one step. A workflow chains agents with logic.",
-    ],
-    visual: WorkflowPipelineVisual,
+    bullets: [],
+    visual: ThinkingBeyondVisual,
   },
 
   {
@@ -1064,6 +1114,21 @@ agent.run("Find the first 15 Fibonacci primes")
   },
 
   {
+    id: 39,
+    title: "Conversation: Multi-Turn Chat",
+    subtitle: "The most natural agent interface",
+    icon: FiMessageSquare,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [
+      "Multi-turn context: the agent remembers what was said earlier in the thread",
+      "Streaming into a thread shows thinking in real time -- tool calls, reasoning, responses",
+      "Same agent infrastructure, different presentation -- chat is just another client",
+    ],
+    rightPanel: ChatWindowVisual,
+  },
+
+  {
     id: 35,
     title: "Daily Driver",
     subtitle: "Managing work through conversation",
@@ -1091,8 +1156,8 @@ agent.run("Find the first 15 Fibonacci primes")
       "An LLM is just a prediction engine — tools turn it into an agent",
       "Patterns like memory, guardrails, and retries make agents reliable",
       "Orchestration lets multiple agents collaborate and parallelize",
-      "Production demands auth, injection defense, cost tracking, and observability",
-      "Beyond the agent: standards (MCP), workflows, rich UIs (A2UI), and voice",
+      "Production demands auth, injection defense, cost tracking, evaluation, and smart deployment",
+      "MCP standardizes tool discovery; conversation, voice, and A2UI extend the interface",
       "Start simple, measure everything, add complexity only when you need it",
     ],
   },

@@ -8,11 +8,13 @@ import { registerRequest, unregisterRequest } from "./request-registry.js";
 interface AgentStreamConfig {
   system: string;
   tools: Record<string, any>;
-  prompt: string;
+  prompt?: string;
+  messages?: Array<{ role: "user" | "assistant"; content: string }>;
   model?: string;
   maxSteps?: number;
   conversationId: string;
   extraDoneData?: Record<string, unknown>;
+  onStreamComplete?: (result: { text: string; toolCalls: string[] }) => Promise<void>;
 }
 
 export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
@@ -23,10 +25,13 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
     const controller = registerRequest(config.conversationId);
     abortSignal = controller.signal;
   }
+  const promptOrMessages = config.messages
+    ? { messages: [{ role: "system" as const, content: config.system }, ...config.messages] }
+    : { system: config.system, prompt: config.prompt! };
+
   const result = streamText({
     model: getModel(config.model),
-    system: config.system,
-    prompt: config.prompt,
+    ...promptOrMessages,
     tools: config.tools,
     stopWhen: stepCountIs(config.maxSteps ?? 5),
     abortSignal,
@@ -36,6 +41,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
     let id = 0;
     const toolsUsed = new Set<string>();
     const bus = getEventBus();
+    let fullText = "";
 
     // Emit session:start so the client knows the conversationId for cancellation
     await stream.writeSSE({
@@ -47,6 +53,7 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
     try {
       for await (const chunk of result.fullStream) {
         if (chunk.type === "text-delta") {
+          fullText += chunk.text;
           bus?.emit("text:delta", { text: chunk.text });
           await stream.writeSSE({
             id: String(id++),
@@ -75,6 +82,10 @@ export function streamAgentResponse(c: Context, config: AgentStreamConfig) {
             }),
           });
         }
+      }
+
+      if (config.onStreamComplete) {
+        await config.onStreamComplete({ text: fullText, toolCalls: [...toolsUsed] });
       }
 
       const usage = await result.usage;

@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, createMemo, Show } from "solid-js";
+import { createSignal, onMount, onCleanup, createMemo, createComponent, Show } from "solid-js";
 import type { TerminalLine, DemoConfig } from "./types";
 import { slides } from "./data/slides";
 import SlideShell from "./components/SlideShell";
@@ -30,7 +30,7 @@ function App() {
   const [streamMode, setStreamModeSignal] = createSignal(getStreamMode());
 
   const currentSlide = createMemo(() => slides[slideIndex()]);
-  const hasDemo = createMemo(() => !!currentSlide().demo || !!currentSlide().demoButtons?.length);
+  const hasDemo = createMemo(() => !!currentSlide().demo || !!currentSlide().demoButtons?.length || !!currentSlide().rightPanel);
   // Derived: lines for the currently visible slide
   const lines = createMemo(() => slideLines()[slideIndex()] ?? []);
   // Derived: concatenated text lines for TTS playback
@@ -89,8 +89,9 @@ function App() {
     const activeDemo = demo ?? currentSlide().demo;
     if (!activeDemo || isRunning()) return;
 
-    // Always clear this slide's previous output before a fresh run
-    clearTerminal();
+    // Clear unless the demo opts into keeping history (e.g. Kanban conversation)
+    const keep = activeDemo.type === "sse" && activeDemo.keepHistory;
+    if (!keep) clearTerminal();
     setActiveConversationId(null);
     setIsRunning(true);
 
@@ -120,20 +121,23 @@ function App() {
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowRight" || e.key === " ") {
+    const tag = (e.target as HTMLElement)?.tagName;
+    const isInput = tag === "INPUT" || tag === "TEXTAREA";
+
+    if ((e.key === "ArrowRight" || e.key === " ") && !isInput) {
       e.preventDefault();
       navigate(slideIndex() + 1);
-    } else if (e.key === "ArrowLeft") {
+    } else if (e.key === "ArrowLeft" && !isInput) {
       e.preventDefault();
       navigate(slideIndex() - 1);
     } else if (e.key === "k" && (e.metaKey || e.ctrlKey) && e.shiftKey) {
       e.preventDefault();
       clearTerminal();
-    } else if (e.key === "s" && !e.metaKey && !e.ctrlKey) {
+    } else if (e.key === "s" && !e.metaKey && !e.ctrlKey && !isInput) {
       const next = streamMode() === "sse" ? "ws" : "sse";
       setStreamMode(next);
       setStreamModeSignal(next);
-    } else if (e.key === "?" || e.key === "/") {
+    } else if ((e.key === "?" || e.key === "/") && !isInput) {
       setShowShortcuts((v) => !v);
     } else if (e.key === "Escape") {
       if (activeConversationId()) {
@@ -211,22 +215,35 @@ function App() {
               fullWidth={!hasDemo()}
               onRun={handleRun}
               isRunning={isRunning()}
+              lastResponseText={lastResponseText()}
+              onAddLine={addLine}
+              onClear={clearTerminal}
             />
           }
           terminal={
-            hasDemo() ? (
-              <Terminal
-                lines={lines()}
-                streamingText={streamingText()}
-                isStreaming={isStreaming()}
-                title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
-                footer={terminalFooter()}
-                responseText={lastResponseText()}
-                isRunning={isRunning()}
-                activeConversationId={activeConversationId()}
-                onStop={handleStop}
-              />
-            ) : undefined
+            hasDemo()
+              ? currentSlide().rightPanel
+                ? createComponent(currentSlide().rightPanel!, {
+                    onRun: handleRun,
+                    isRunning: isRunning(),
+                    lastResponseText: lastResponseText(),
+                    onAddLine: addLine,
+                  })
+                : (
+                  <Terminal
+                    lines={lines()}
+                    streamingText={streamingText()}
+                    isStreaming={isStreaming()}
+                    title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
+                    footer={terminalFooter()}
+                    responseText={lastResponseText()}
+                    isRunning={isRunning()}
+                    activeConversationId={activeConversationId()}
+                    onStop={handleStop}
+                    onClearHistory={clearTerminal}
+                  />
+                )
+              : undefined
           }
         />
       </div>

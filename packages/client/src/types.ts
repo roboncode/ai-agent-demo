@@ -45,6 +45,8 @@ export interface SseDemoConfig {
   endpoint: string;
   body: Record<string, unknown>;
   systemPrompt?: string;
+  /** When true, don't clear the terminal between runs — keeps conversation visible */
+  keepHistory?: boolean;
   /** Sequential SSE steps — each opens a separate stream */
   steps?: Array<{
     label: string;
@@ -86,6 +88,12 @@ export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | 
 export interface VisualProps {
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
+  /** Concatenated text lines from the most recent agent response */
+  lastResponseText?: string;
+  /** Add a line to the terminal output */
+  onAddLine?: (type: TerminalLineType, content: string) => void;
+  /** Clear the terminal output */
+  onClear?: () => void;
 }
 
 export interface SlideConfig {
@@ -109,4 +117,6 @@ export interface SlideConfig {
   code?: string;
   /** Optional demo configuration - slides without this hide the terminal */
   demo?: DemoConfig;
+  /** Optional component to render in the right panel instead of the terminal */
+  rightPanel?: Component;
 }

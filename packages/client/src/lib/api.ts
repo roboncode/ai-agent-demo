@@ -20,6 +20,20 @@ function getHeaders(
   return headers;
 }
 
+export async function getJson<T = unknown>(endpoint: string): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    headers: getHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `HTTP ${res.status}`), {
+      status: res.status,
+      data,
+    });
+  }
+  return data as T;
+}
+
 export async function postJson<T = unknown>(
   endpoint: string,
   body: Record<string, unknown>,

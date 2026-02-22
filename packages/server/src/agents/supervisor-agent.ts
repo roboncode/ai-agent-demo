@@ -9,6 +9,7 @@ import { generateConversationId } from "../registry/handler-factories.js";
 import { getOrchestratorAgents, getEventBus, getAbortSignal, delegationStore } from "../lib/delegation-context.js";
 import { registerRequest, cancelRequest, unregisterRequest } from "../lib/request-registry.js";
 import type { AgentEventBus } from "../lib/agent-events.js";
+import { conversationStore } from "../storage/conversation-store.js";
 
 const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
 
@@ -370,6 +371,34 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
       system += `\n\n## Memory Context\n${memoryContext}`;
     }
 
+    // ── Conversation persistence ──────────────────────────────
+    let historyMessages: Array<{ role: "user" | "assistant"; content: string }> | undefined;
+    if (cid) {
+      const conv = await conversationStore.get(cid);
+      if (conv) {
+        historyMessages = [
+          ...conv.messages.map((m) => ({ role: m.role, content: m.content })),
+          { role: "user" as const, content: message },
+        ];
+      }
+      await conversationStore.append(cid, {
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    /** Helper: persist the final assistant text to the conversation store */
+    async function saveAssistantResponse(text: string) {
+      if (cid && text) {
+        await conversationStore.append(cid, {
+          role: "assistant",
+          content: text,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
     // ── approvedPlan shortcut ─────────────────────────────────
     if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
       return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
@@ -404,9 +433,12 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
           const synthesisStart = performance.now();
           const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
 
+          let fullText = "";
           for await (const text of synthesisResult.textStream) {
+            fullText += text;
             await writer.write("text-delta", { text });
           }
+          await saveAssistantResponse(fullText);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -461,7 +493,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         const planResult = await generateText({
           model: getModel(model),
           system,
-          prompt: message,
+          ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
           tools,
           stopWhen: stepCountIs(5),
           abortSignal,
@@ -544,9 +576,12 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
           const synthesisStart = performance.now();
           const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
 
+          let fullText = "";
           for await (const text of synthesisResult.textStream) {
+            fullText += text;
             await writer.write("text-delta", { text });
           }
+          await saveAssistantResponse(fullText);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -585,9 +620,12 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
           const synthesisStart = performance.now();
           const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
 
+          let fullText = "";
           for await (const text of synthesisResult.textStream) {
+            fullText += text;
             await writer.write("text-delta", { text });
           }
+          await saveAssistantResponse(fullText);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -607,6 +645,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         } else {
           if (planResult.text) {
             await writer.write("text-delta", { text: planResult.text });
+            await saveAssistantResponse(planResult.text);
           }
 
           await writer.write("agent:end", { agent: "supervisor" });
