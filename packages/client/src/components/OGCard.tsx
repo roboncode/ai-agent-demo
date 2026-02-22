@@ -38,19 +38,19 @@ const OGCard: Component<Props> = (props) => {
 
       <div class="p-4">
         <Show when={og().siteName}>
-          <span class="mb-1 inline-block rounded-sm bg-accent/10 px-1.5 py-0.5 font-mono text-[11px] text-accent">
+          <span class="mb-1 inline-block rounded-sm bg-accent/10 px-1.5 py-0.5 font-mono text-[13px] text-accent">
             {og().siteName}
           </span>
         </Show>
 
         <Show when={og().title}>
-          <div class="font-mono text-[14px] font-semibold text-heading leading-snug">
+          <div class="font-mono text-[17px] font-semibold text-heading leading-snug">
             {og().title}
           </div>
         </Show>
 
         <Show when={og().description}>
-          <div class="mt-1.5 font-mono text-[12px] leading-relaxed text-secondary line-clamp-3">
+          <div class="mt-1.5 font-mono text-[14px] leading-relaxed text-secondary line-clamp-3">
             {og().description}
           </div>
         </Show>
@@ -60,7 +60,7 @@ const OGCard: Component<Props> = (props) => {
             href={og().url}
             target="_blank"
             rel="noopener noreferrer"
-            class="mt-2 block truncate font-mono text-[11px] text-accent-dim hover:text-accent transition-colors"
+            class="mt-2 block truncate font-mono text-[13px] text-accent-dim hover:text-accent transition-colors"
           >
             {og().url}
           </a>

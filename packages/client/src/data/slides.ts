@@ -34,6 +34,7 @@ import {
   FiAlertCircle,
   FiFeather,
   FiMonitor,
+  FiGlobe,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -51,6 +52,7 @@ export const slides: SlideConfig[] = [
       "Agent Patterns — Memory, guardrails, error handling",
       "Orchestration — Supervisors and parallel tasks",
       "Production — Security, cost, and deployment",
+      "Beyond the Agent — Standards, workflows, and user interfaces",
     ],
   },
 
@@ -793,7 +795,6 @@ const [weather, news, movie] = await Promise.all([
       "Sandboxes",
       "Observability & Cost",
       "Choosing the Right Model",
-      "MCP & Workflows",
     ],
   },
 
@@ -932,13 +933,28 @@ agent.run("Find the first 15 Fibonacci primes")
     visual: ChoosingModelVisual,
   },
 
+  // ─── SECTION VI: BEYOND THE AGENT ────────────────────────────
+  {
+    id: 33,
+    title: "Beyond the Agent",
+    subtitle: "Standards, workflows, and user interfaces",
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    layout: "section-intro",
+    bullets: [
+      "MCP",
+      "Workflows",
+      "A2UI: Agent-to-User Interface",
+    ],
+  },
+
   {
     id: 18,
     title: "MCP",
     subtitle: "USB-C for AI tools",
     icon: FiLink,
-    category: "Production",
-    section: "V. Production Concerns",
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
     bullets: [
       "A standard for AI to discover and use tools — no hardcoding",
       "Any MCP-compatible tool works with any MCP-compatible agent",
@@ -951,8 +967,8 @@ agent.run("Find the first 15 Fibonacci primes")
     title: "Workflows",
     subtitle: "Simple blocks, powerful compositions",
     icon: FiGitMerge,
-    category: "Production",
-    section: "V. Production Concerns",
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
     bullets: [
       "An agent is one step. A workflow chains agents with logic.",
     ],
@@ -964,8 +980,8 @@ agent.run("Find the first 15 Fibonacci primes")
     title: "A2UI: Agent-to-User Interface",
     subtitle: "From JSON to native components",
     icon: FiMonitor,
-    category: "Production",
-    section: "V. Production Concerns",
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
     bullets: [
       "Agents return structured data, not HTML or markdown",
       "Clients render native UI components from that data",
@@ -999,6 +1015,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "Patterns like memory, guardrails, and retries make agents reliable",
       "Orchestration lets multiple agents collaborate and parallelize",
       "Production demands auth, injection defense, cost tracking, and observability",
+      "Beyond the agent: standards (MCP), workflows, and rich user interfaces (A2UI)",
       "Start simple, measure everything, add complexity only when you need it",
     ],
   },

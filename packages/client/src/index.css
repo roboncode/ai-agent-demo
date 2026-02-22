@@ -248,6 +248,15 @@
   --badge-glow:   rgba(251, 113, 133, 0.10);
 }
 
+/* VI. Beyond the Agent — orange */
+.badge-vi {
+  --badge-text:   #f97316;
+  --badge-bg-hi:  rgba(249, 115, 22, 0.15);
+  --badge-bg-lo:  rgba(249, 115, 22, 0.05);
+  --badge-border: rgba(249, 115, 22, 0.30);
+  --badge-glow:   rgba(249, 115, 22, 0.10);
+}
+
 /* Conclusion — emerald */
 .badge-conclusion {
   --badge-text:   #34d399;

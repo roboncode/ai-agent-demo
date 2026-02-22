@@ -164,7 +164,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
         <div
           class="mb-8 h-1 w-32 rounded-full"
           style={{
-            background: "linear-gradient(90deg, #34d8cc 0%, #38bdf8 25%, #a78bfa 50%, #fbbf24 75%, #fb7185 100%)",
+            background: "linear-gradient(90deg, #34d8cc 0%, #38bdf8 20%, #a78bfa 40%, #fbbf24 60%, #fb7185 80%, #f97316 100%)",
           }}
         />
 
@@ -202,7 +202,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
                         border: `1px solid ${color()}30`,
                       }}
                     >
-                      {["I", "II", "III", "IV", "V"][i()] ?? String(i() + 1)}
+                      {["I", "II", "III", "IV", "V", "VI"][i()] ?? String(i() + 1)}
                     </span>
                     <span class="font-mono text-[16px] font-medium text-primary">
                       {topic}
