@@ -1,6 +1,6 @@
 import { generateText, stepCountIs } from "ai";
 import { getModel, extractUsage } from "./ai-provider.js";
-import { getEventBus } from "./delegation-context.js";
+import { getEventBus, getAbortSignal } from "./delegation-context.js";
 import type { ClarifyItem } from "../agents/execute-task.js";
 
 interface AgentConfig {
@@ -21,6 +21,7 @@ export async function runAgent(
     prompt: message,
     tools: config.tools,
     stopWhen: stepCountIs(maxSteps),
+    abortSignal: getAbortSignal(),
   });
 
   const toolsUsed = result.steps

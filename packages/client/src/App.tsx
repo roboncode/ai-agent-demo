@@ -9,7 +9,7 @@ import ApprovalButtons from "./components/ApprovalButtons";
 import ShortcutsHelp from "./components/ShortcutsHelp";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
-import { getStreamMode, setStreamMode } from "./lib/api";
+import { getStreamMode, setStreamMode, postJson } from "./lib/api";
 import { FiGithub } from "solid-icons/fi";
 
 function App() {
@@ -26,6 +26,7 @@ function App() {
   const [isStreaming, setIsStreaming] = createSignal(false);
   const [isRunning, setIsRunning] = createSignal(false);
   const [awaitingApproval, setAwaitingApproval] = createSignal<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = createSignal<string | null>(null);
   const [streamMode, setStreamModeSignal] = createSignal(getStreamMode());
 
   const currentSlide = createMemo(() => slides[slideIndex()]);
@@ -59,8 +60,21 @@ function App() {
     setAwaitingApproval(null);
   }
 
+  async function handleStop() {
+    const convId = activeConversationId();
+    if (!convId) return;
+    setActiveConversationId(null);
+    try {
+      await postJson("/api/agents/cancel", { conversationId: convId });
+    } catch {
+      // best-effort cancel
+    }
+  }
+
   function navigate(index: number) {
     if (index >= 0 && index < slides.length && index !== slideIndex()) {
+      // Cancel any active stream before navigating
+      handleStop();
       setSlideIndex(index);
       history.replaceState(null, "", `?s=${index + 1}`);
       // Stop any in-flight run; preserve per-slide output
@@ -77,6 +91,7 @@ function App() {
 
     // Always clear this slide's previous output before a fresh run
     clearTerminal();
+    setActiveConversationId(null);
     setIsRunning(true);
 
     await runDemo(activeDemo, {
@@ -84,8 +99,10 @@ function App() {
       setStreamingText,
       setIsStreaming,
       setAwaitingApproval,
+      setActiveConversationId,
     });
 
+    setActiveConversationId(null);
     setIsRunning(false);
   }
 
@@ -119,7 +136,11 @@ function App() {
     } else if (e.key === "?" || e.key === "/") {
       setShowShortcuts((v) => !v);
     } else if (e.key === "Escape") {
-      setShowShortcuts(false);
+      if (activeConversationId()) {
+        handleStop();
+      } else {
+        setShowShortcuts(false);
+      }
     }
   }
 
@@ -201,6 +222,9 @@ function App() {
                 title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
                 footer={terminalFooter()}
                 responseText={lastResponseText()}
+                isRunning={isRunning()}
+                activeConversationId={activeConversationId()}
+                onStop={handleStop}
               />
             ) : undefined
           }

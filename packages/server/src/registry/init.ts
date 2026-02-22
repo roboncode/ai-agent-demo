@@ -27,6 +27,7 @@ export async function initializeRegistry() {
     import("../agents/guardrails-agent.js"),
     import("../agents/web-search-agent.js"),
     import("../agents/skills-agent.js"),
+    import("../agents/taskboard-agent.js"),
   ]);
 
   // Load persisted prompt overrides

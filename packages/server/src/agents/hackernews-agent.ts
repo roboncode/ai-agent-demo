@@ -32,7 +32,7 @@ const agentTools = { getTopStories: hackernewsTopStoriesTool, getStoryDetail: ha
 
 agentRegistry.register({
   name: "hackernews",
-  description: "Hacker News analyst agent for trending stories and tech news",
+  description: "Fetches trending stories from the Hacker News website (news.ycombinator.com). Only use for queries explicitly about Hacker News, HN, or trending tech news — NOT for general knowledge, web searches, or factual questions.",
   toolNames: ["getTopStories", "getStoryDetail"],
   defaultFormat: "sse",
   defaultSystem: SYSTEM_PROMPT,

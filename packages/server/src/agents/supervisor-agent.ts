@@ -6,7 +6,8 @@ import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo 
 import { executeTask, type TaskResult } from "./execute-task.js";
 import { agentRegistry } from "../registry/agent-registry.js";
 import { generateConversationId } from "../registry/handler-factories.js";
-import { getOrchestratorAgents, getEventBus } from "../lib/delegation-context.js";
+import { getOrchestratorAgents, getEventBus, getAbortSignal, delegationStore } from "../lib/delegation-context.js";
+import { registerRequest, cancelRequest, unregisterRequest } from "../lib/request-registry.js";
 import type { AgentEventBus } from "../lib/agent-events.js";
 
 const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
@@ -216,6 +217,7 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
     prompt: message,
     tools: { routeToAgent: routeToAgentTool, createTask: createTaskTool },
     stopWhen: stepCountIs(5),
+    abortSignal: getAbortSignal(),
   });
 
   // Reactive clarification check (direct routeToAgent path)
@@ -287,6 +289,7 @@ export async function runSupervisorAgent(message: string, model?: string, allowe
       model: getModel(model),
       ...(synthesisSystem && { system: synthesisSystem }),
       prompt: synthesisPrompt,
+      abortSignal: getAbortSignal(),
     });
     const synthUsage = extractUsage(synthesisResult, synthesisStart);
 
@@ -353,6 +356,15 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
     const autonomous = reqAutonomous ?? defaultAutonomous;
     const overallStart = performance.now();
 
+    // Register request for cancellation and inject abort signal into delegation context
+    const controller = registerRequest(convId);
+    const abortSignal = controller.signal;
+    // Also abort if the client disconnects
+    c.req.raw.signal.addEventListener("abort", () => cancelRequest(convId));
+    // Update the delegation context with the abort signal
+    const parentCtx = delegationStore.getStore();
+    const ctx = { ...parentCtx!, abortSignal };
+
     let system = await buildSystemPrompt(systemPrompt, allowedAgents);
     if (memoryContext) {
       system += `\n\n## Memory Context\n${memoryContext}`;
@@ -360,57 +372,68 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
 
     // ── approvedPlan shortcut ─────────────────────────────────
     if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
-      return streamSSE(c, async (stream) => {
+      return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
         const writer = createStreamWriter(stream);
         const bus = getEventBus();
         const unsub = bridgeBusToStream(bus, writer);
 
-        await writer.write("agent:start", { agent: "supervisor" });
+        await writer.write("session:start", { conversationId: convId });
 
-        // Execute approved tasks in parallel — bus events stream in real-time
-        const results = await Promise.all(
-          approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
-        );
+        try {
+          await writer.write("agent:start", { agent: "supervisor" });
 
-        // Flush any queued bus events before continuing
-        await writer.flush();
+          // Execute approved tasks in parallel — bus events stream in real-time
+          const results = await Promise.all(
+            approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
+          );
 
-        // Synthesis
-        const responseSkills = collectResponseSkills(results);
-        const synthesisSystem = await buildSynthesisContext(responseSkills);
-        if (responseSkills.length > 0) {
-          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          // Flush any queued bus events before continuing
+          await writer.flush();
+
+          // Synthesis
+          const responseSkills = collectResponseSkills(results);
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          for await (const text of synthesisResult.textStream) {
+            await writer.write("text-delta", { text });
+          }
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await writer.write("agent:end", { agent: "supervisor" });
+
+          await writer.write("done", {
+            toolsUsed: [...new Set(allToolsUsed)],
+            conversationId: convId,
+            tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+            usage: totalUsage,
+          });
+        } catch (err: any) {
+          if (err.name === "AbortError" || abortSignal?.aborted) {
+            await writer.write("cancelled", { conversationId: convId });
+          } else {
+            throw err;
+          }
+        } finally {
+          unregisterRequest(convId);
+          unsub();
         }
-
-        await writer.write("agent:think", { text: "Synthesizing results..." });
-
-        const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-
-        const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
-
-        for await (const text of synthesisResult.textStream) {
-          await writer.write("text-delta", { text });
-        }
-
-        const synthesisUsage = await synthesisResult.usage;
-        const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
-        const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
-        const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-        const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
-        totalUsage.durationMs = Math.round(performance.now() - overallStart);
-
-        await writer.write("agent:end", { agent: "supervisor" });
-
-        await writer.write("done", {
-          toolsUsed: [...new Set(allToolsUsed)],
-          conversationId: convId,
-          tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
-          usage: totalUsage,
-        });
-
-        unsub();
-      });
+      }));
     }
 
     // ── Build tools based on mode ─────────────────────────────
@@ -423,190 +446,187 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
       tools.createTask = buildCreateTaskTool(allowedAgents);
     }
 
-    return streamSSE(c, async (stream) => {
+    return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
       const writer = createStreamWriter(stream);
       const bus = getEventBus();
       const unsub = bridgeBusToStream(bus, writer);
 
-      await writer.write("agent:start", { agent: "supervisor" });
+      await writer.write("session:start", { conversationId: convId });
 
-      // ── Routing phase ───────────────────────────────────────
-      // For routeToAgent (with execute), the SDK runs executeTask inline,
-      // which emits delegate:start/end + tool:call/result to the bus → stream.
-      // Sub-agents have _clarify injected — if they need info, they call it
-      // and we detect it reactively (no pre-routing triage needed).
-      const planStart = performance.now();
-      const planResult = await generateText({
-        model: getModel(model),
-        system,
-        prompt: message,
-        tools,
-        stopWhen: stepCountIs(5),
-      });
-      const planUsage = extractUsage(planResult, planStart);
+      try {
+        await writer.write("agent:start", { agent: "supervisor" });
 
-      // Flush any bus events from inline routeToAgent executions
-      await writer.flush();
+        // ── Routing phase ───────────────────────────────────────
+        const planStart = performance.now();
+        const planResult = await generateText({
+          model: getModel(model),
+          system,
+          prompt: message,
+          tools,
+          stopWhen: stepCountIs(5),
+          abortSignal,
+        });
+        const planUsage = extractUsage(planResult, planStart);
 
-      // ── Reactive clarification check (direct routeToAgent) ─
-      // If a sub-agent called _clarify, its result contains
-      // typed items. Detect and surface to user.
-      if (!autonomous) {
-        for (const step of planResult.steps) {
-          for (const tr of step.toolResults) {
-            if (tr.toolName === "routeToAgent") {
-              const output = (tr as any).output;
-              if (output?.items?.length) {
-                const agent = planResult.steps
-                  .flatMap((s) => s.toolCalls)
-                  .find((tc) => tc.toolName === "routeToAgent")?.input?.agent;
-                const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
-                await writer.write("ask:user", { items: taggedItems });
-                await writer.write("agent:end", { agent: "supervisor" });
+        // Flush any bus events from inline routeToAgent executions
+        await writer.flush();
 
-                // Include sub-agent usage from the inline routeToAgent execution
-                const subAgentUsage = output?.usage as UsageInfo | undefined;
-                const totalUsage = subAgentUsage
-                  ? mergeUsage(planUsage, subAgentUsage)
-                  : { ...planUsage };
-                totalUsage.durationMs = Math.round(performance.now() - overallStart);
+        // ── Reactive clarification check (direct routeToAgent) ─
+        if (!autonomous) {
+          for (const step of planResult.steps) {
+            for (const tr of step.toolResults) {
+              if (tr.toolName === "routeToAgent") {
+                const output = (tr as any).output;
+                if (output?.items?.length) {
+                  const agent = planResult.steps
+                    .flatMap((s) => s.toolCalls)
+                    .find((tc) => tc.toolName === "routeToAgent")?.input?.agent;
+                  const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
+                  await writer.write("ask:user", { items: taggedItems });
+                  await writer.write("agent:end", { agent: "supervisor" });
 
-                await writer.write("done", {
-                  toolsUsed: ["routeToAgent"],
-                  conversationId: convId,
-                  awaitingResponse: true,
-                  items: taggedItems,
-                  usage: totalUsage,
-                });
-                unsub();
-                return;
+                  const subAgentUsage = output?.usage as UsageInfo | undefined;
+                  const totalUsage = subAgentUsage
+                    ? mergeUsage(planUsage, subAgentUsage)
+                    : { ...planUsage };
+                  totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+                  await writer.write("done", {
+                    toolsUsed: ["routeToAgent"],
+                    conversationId: convId,
+                    awaitingResponse: true,
+                    items: taggedItems,
+                    usage: totalUsage,
+                  });
+                  return;
+                }
               }
             }
           }
         }
-      }
 
-      // ── deferred createTask calls ───────────────────────────
-      const tasks = collectTasksFromSteps(planResult.steps);
+        // ── deferred createTask calls ───────────────────────────
+        const tasks = collectTasksFromSteps(planResult.steps);
 
-      if (tasks.length > 0) {
-        await writer.write("agent:plan", { tasks });
+        if (tasks.length > 0) {
+          await writer.write("agent:plan", { tasks });
 
-        // Non-autonomous: pause for approval
-        if (!autonomous) {
+          // Non-autonomous: pause for approval
+          if (!autonomous) {
+            await writer.write("agent:end", { agent: "supervisor" });
+            await writer.write("done", {
+              toolsUsed: ["createTask"],
+              conversationId: convId,
+              awaitingApproval: true,
+              tasks,
+              usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+            });
+            return;
+          }
+
+          // Phase 2: Execute all tasks in parallel — bus events stream in real-time
+          const results = await Promise.all(
+            tasks.map((task) => executeTask(task.agent, task.query, task.skills))
+          );
+          await writer.flush();
+
+          // Phase 3: Synthesis
+          const responseSkills = collectResponseSkills(results);
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          for await (const text of synthesisResult.textStream) {
+            await writer.write("text-delta", { text });
+          }
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
           await writer.write("agent:end", { agent: "supervisor" });
           await writer.write("done", {
-            toolsUsed: ["createTask"],
+            toolsUsed: [...new Set(allToolsUsed)],
             conversationId: convId,
-            awaitingApproval: true,
-            tasks,
-            usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+            tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+            usage: totalUsage,
           });
-          unsub();
           return;
         }
 
-        // Phase 2: Execute all tasks in parallel — bus events stream in real-time
-        const results = await Promise.all(
-          tasks.map((task) => executeTask(task.agent, task.query, task.skills))
-        );
-        await writer.flush();
+        // ── Direct mode ─────────────────────────────────────────
+        const routeResults = planResult.steps
+          .flatMap((step) => step.toolResults)
+          .filter((tr) => tr.toolName === "routeToAgent");
 
-        // Phase 3: Synthesis
-        const responseSkills = collectResponseSkills(results);
-        const synthesisSystem = await buildSynthesisContext(responseSkills);
-        if (responseSkills.length > 0) {
-          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+        if (routeResults.length > 0) {
+          const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?._responseSkills ?? []))];
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
+          const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          for await (const text of synthesisResult.textStream) {
+            await writer.write("text-delta", { text });
+          }
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
+          const subAgentUsages = routeResults
+            .map((tr) => (tr as any).output?.usage)
+            .filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await writer.write("agent:end", { agent: "supervisor" });
+          await writer.write("done", {
+            toolsUsed: [...new Set(["routeToAgent", ...routeToolsUsed])],
+            conversationId: convId,
+            usage: totalUsage,
+          });
+        } else {
+          if (planResult.text) {
+            await writer.write("text-delta", { text: planResult.text });
+          }
+
+          await writer.write("agent:end", { agent: "supervisor" });
+          await writer.write("done", {
+            toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))],
+            conversationId: convId,
+            usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+          });
         }
-
-        await writer.write("agent:think", { text: "Synthesizing results..." });
-
-        const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-
-        const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
-
-        for await (const text of synthesisResult.textStream) {
-          await writer.write("text-delta", { text });
+      } catch (err: any) {
+        if (err.name === "AbortError" || abortSignal.aborted) {
+          await writer.write("cancelled", { conversationId: convId });
+        } else {
+          throw err;
         }
-
-        const synthesisUsage = await synthesisResult.usage;
-        const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
-        const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
-        const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-        const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
-        totalUsage.durationMs = Math.round(performance.now() - overallStart);
-
-        await writer.write("agent:end", { agent: "supervisor" });
-        await writer.write("done", {
-          toolsUsed: [...new Set(allToolsUsed)],
-          conversationId: convId,
-          tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
-          usage: totalUsage,
-        });
+      } finally {
+        unregisterRequest(convId);
         unsub();
-        return;
       }
-
-      // ── Direct mode ─────────────────────────────────────────
-      // routeToAgent calls already executed inline by the SDK.
-      // Bus events (delegate:start/end, tool:call/result) already forwarded.
-
-      // Collect sub-agent responses from routeToAgent results
-      const routeResults = planResult.steps
-        .flatMap((step) => step.toolResults)
-        .filter((tr) => tr.toolName === "routeToAgent");
-
-      if (routeResults.length > 0) {
-        // Synthesis — stream the response (consistent with createTask path)
-        const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?._responseSkills ?? []))];
-        const synthesisSystem = await buildSynthesisContext(responseSkills);
-        if (responseSkills.length > 0) {
-          await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
-        }
-
-        await writer.write("agent:think", { text: "Synthesizing results..." });
-
-        const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
-        const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-
-        const synthesisStart = performance.now();
-        const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
-
-        for await (const text of synthesisResult.textStream) {
-          await writer.write("text-delta", { text });
-        }
-
-        const synthesisUsage = await synthesisResult.usage;
-        const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
-        const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
-        const subAgentUsages = routeResults
-          .map((tr) => (tr as any).output?.usage)
-          .filter((u): u is UsageInfo => !!u);
-        const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
-        totalUsage.durationMs = Math.round(performance.now() - overallStart);
-
-        await writer.write("agent:end", { agent: "supervisor" });
-        await writer.write("done", {
-          toolsUsed: [...new Set(["routeToAgent", ...routeToolsUsed])],
-          conversationId: convId,
-          usage: totalUsage,
-        });
-      } else {
-        // No routeToAgent results — emit whatever text the supervisor generated
-        if (planResult.text) {
-          await writer.write("text-delta", { text: planResult.text });
-        }
-
-        await writer.write("agent:end", { agent: "supervisor" });
-        await writer.write("done", {
-          toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))],
-          conversationId: convId,
-          usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
-        });
-      }
-      unsub();
-    });
+    }));
   };
 }
 

@@ -128,11 +128,12 @@ export async function executeTask(
   }
   bus?.emit("delegate:start", { from, to: agent, query });
 
-  // Execute with updated delegation context — propagate parent's event bus
+  // Execute with updated delegation context — propagate parent's event bus + abort signal
   const childCtx: DelegationContext = {
     chain: [...chain, agent],
     depth: depth + 1,
     events: parentCtx?.events,
+    abortSignal: parentCtx?.abortSignal,
   };
 
   const augmentedTools = { ...registration.tools!, _clarify: CLARIFY_TOOL };

@@ -16,6 +16,7 @@ interface DemoCallbacks {
   setStreamingText: (text: string) => void;
   setIsStreaming: (streaming: boolean) => void;
   setAwaitingApproval: (actionId: string | null) => void;
+  setActiveConversationId?: (id: string | null) => void;
 }
 
 export async function runDemo(
@@ -178,6 +179,10 @@ async function runSingleSseStream(
     const data = JSON.parse(event.data);
 
     switch (event.event) {
+      case "session:start": {
+        cb.setActiveConversationId?.(data.conversationId);
+        break;
+      }
       case "text-delta": {
         streamBuffer += data.text ?? "";
         cb.setStreamingText(streamBuffer);
@@ -298,6 +303,18 @@ async function runSingleSseStream(
         }
         break;
       }
+      case "cancelled": {
+        if (streamBuffer) {
+          cb.addLine("text", streamBuffer);
+          streamBuffer = "";
+          cb.setStreamingText("");
+        }
+        cb.setIsStreaming(false);
+        cb.setActiveConversationId?.(null);
+        cb.addLine("status", "-- cancelled --");
+        cb.addLine("info", "--- stream ends ---");
+        return;
+      }
       case "done": {
         if (streamBuffer) {
           cb.addLine("text", streamBuffer);
@@ -312,6 +329,7 @@ async function runSingleSseStream(
   }
 
   cb.setIsStreaming(false);
+  cb.setActiveConversationId?.(null);
   cb.addLine("info", "--- stream ends ---");
 }
 

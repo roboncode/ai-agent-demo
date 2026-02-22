@@ -14,6 +14,12 @@ interface Props {
   footer?: any;
   /** Text-only response content for TTS playback */
   responseText?: string;
+  /** Whether a demo is currently running */
+  isRunning?: boolean;
+  /** Active conversation ID for cancellation */
+  activeConversationId?: string | null;
+  /** Callback to cancel the active stream */
+  onStop?: () => void;
 }
 
 const SCROLL_THRESHOLD = 60; // px from bottom to be considered "at bottom"
@@ -187,30 +193,45 @@ const Terminal: Component<Props> = (props) => {
           </span>
         </div>
 
-        {/* Play response button — right side of titlebar */}
-        <Show when={canSpeak() || isSpeaking()}>
-          <button
-            onClick={isSpeaking() ? handleStop : handlePlay}
-            class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-muted transition-colors hover:text-accent"
-            title={isSpeaking() ? "Stop playback" : "Play response"}
-          >
-            <Show
-              when={isSpeaking()}
-              fallback={
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="6,4 20,12 6,20" />
-                </svg>
-              }
+        {/* Right side of titlebar: stop + TTS buttons */}
+        <div class="ml-auto flex items-center gap-1">
+          <Show when={(props.isRunning || props.isStreaming) && props.activeConversationId && props.onStop}>
+            <button
+              onClick={() => props.onStop?.()}
+              class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-red-400 transition-colors hover:text-red-300"
+              title="Stop stream (Esc)"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="6" width="12" height="12" rx="2" />
               </svg>
-            </Show>
-            <span class="font-mono text-[10px]">
-              {isSpeaking() ? "stop" : "play"}
-            </span>
-          </button>
-        </Show>
+              <span class="font-mono text-[10px]">stop</span>
+            </button>
+          </Show>
+
+          <Show when={canSpeak() || isSpeaking()}>
+            <button
+              onClick={isSpeaking() ? handleStop : handlePlay}
+              class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-muted transition-colors hover:text-accent"
+              title={isSpeaking() ? "Stop playback" : "Play response"}
+            >
+              <Show
+                when={isSpeaking()}
+                fallback={
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="6,4 20,12 6,20" />
+                  </svg>
+                }
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </Show>
+              <span class="font-mono text-[10px]">
+                {isSpeaking() ? "stop" : "play"}
+              </span>
+            </button>
+          </Show>
+        </div>
       </div>
 
       {/* Output area */}

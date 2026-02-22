@@ -6,6 +6,7 @@ import { saveOverride, deleteOverride } from "../../storage/prompt-store.js";
 import { loadMemoriesForIds } from "../../storage/memory-store.js";
 import { AgentEventBus } from "../../lib/agent-events.js";
 import { delegationStore, type DelegationContext } from "../../lib/delegation-context.js";
+import { cancelRequest } from "../../lib/request-registry.js";
 
 const router = createRouter();
 
@@ -201,6 +202,46 @@ router.openapi(
       systemPrompt: agentRegistry.getResolvedPrompt(name)!,
       isDefault: !agentRegistry.hasPromptOverride(name),
     });
+  },
+);
+
+// POST /cancel — Cancel an active streaming request
+router.openapi(
+  createRoute({
+    method: "post",
+    path: "/cancel",
+    tags: ["Agents"],
+    summary: "Cancel an active agent stream",
+    description: "Aborts a running agent request identified by conversationId",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              conversationId: z.string(),
+            }),
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "Cancellation result",
+        content: {
+          "application/json": {
+            schema: z.object({
+              cancelled: z.boolean(),
+              conversationId: z.string(),
+            }),
+          },
+        },
+      },
+    },
+  }),
+  async (c) => {
+    const { conversationId } = await c.req.json();
+    const cancelled = cancelRequest(conversationId);
+    return c.json({ cancelled, conversationId });
   },
 );
 

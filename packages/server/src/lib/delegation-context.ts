@@ -9,6 +9,8 @@ export interface DelegationContext {
   depth: number;
   /** Shared event bus for the entire call tree */
   events?: AgentEventBus;
+  /** Signal to abort all AI SDK calls in this request tree */
+  abortSignal?: AbortSignal;
 }
 
 /** Maximum allowed delegation depth before blocking */
@@ -25,4 +27,9 @@ export const delegationStore = new AsyncLocalStorage<DelegationContext>();
 /** Returns the event bus from the current delegation context, if any */
 export function getEventBus(): AgentEventBus | undefined {
   return delegationStore.getStore()?.events;
+}
+
+/** Returns the abort signal from the current delegation context, if any */
+export function getAbortSignal(): AbortSignal | undefined {
+  return delegationStore.getStore()?.abortSignal;
 }

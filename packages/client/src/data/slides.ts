@@ -9,6 +9,7 @@ import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
 import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
 import A2UIVisual from "../components/A2UIVisual";
 import VoiceVisual from "../components/VoiceVisual";
+import KanbanVisual from "../components/KanbanVisual";
 import {
   FiCpu,
   FiMessageSquare,
@@ -36,6 +37,7 @@ import {
   FiFeather,
   FiMonitor,
   FiMic,
+  FiCheckSquare,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -983,6 +985,7 @@ agent.run("Find the first 15 Fibonacci primes")
       "Workflows",
       "A2UI: Agent-to-User Interface",
       "Voice: A Natural Interface",
+      "Daily Driver",
     ],
   },
 
@@ -1056,6 +1059,22 @@ agent.run("Find the first 15 Fibonacci primes")
     demo: {
       type: "sse",
       endpoint: "/api/agents/supervisor",
+      body: { message: "(voice)" },
+    },
+  },
+
+  {
+    id: 35,
+    title: "Daily Driver",
+    subtitle: "Managing work through conversation",
+    icon: FiCheckSquare,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    visual: KanbanVisual,
+    bullets: [],
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/taskboard",
       body: { message: "(voice)" },
     },
   },
