@@ -9,7 +9,7 @@ import {
   sectionColors,
 } from "../lib/section-colors";
 import CodeBlock from "./CodeBlock";
-import { FiChevronRight } from "solid-icons/fi";
+import { FiChevronRight, FiPlay } from "solid-icons/fi";
 
 interface Props {
   slide: SlideConfig;
@@ -435,10 +435,10 @@ const DefaultSlideContent: Component<Props> = (props) => {
                 <button
                   onClick={() => props.onRun?.(btn.demo)}
                   disabled={props.isRunning}
-                  class="demo-hint btn-glow flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  class="demo-hint btn-glow flex flex-1 cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <span class="text-accent">&#9654;</span>
-                  <span class="font-body text-sm text-accent-dim">{btn.label}</span>
+                  <span class="flex-shrink-0 text-accent"><FiPlay size={22} /></span>
+                  <span class="font-body text-left text-sm leading-snug text-accent-dim">{btn.label}</span>
                 </button>
               )}
             </For>
@@ -452,10 +452,10 @@ const DefaultSlideContent: Component<Props> = (props) => {
             disabled={props.isRunning}
             class="demo-hint btn-glow mt-8 inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span class="text-lg text-accent">
-              {props.isRunning ? <span class="spinner inline-block" /> : <>&#9654;</>}
+            <span class="flex-shrink-0 text-accent">
+              {props.isRunning ? <span class="spinner inline-block" /> : <FiPlay size={22} />}
             </span>
-            <span class="font-body text-sm text-accent-dim">
+            <span class="font-body text-left text-sm leading-snug text-accent-dim">
               {props.isRunning ? "Running..." : `Watch: ${props.slide.demoHint}`}
             </span>
           </button>
