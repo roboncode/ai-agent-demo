@@ -1,5 +1,13 @@
 import { type Component, Show, For } from "solid-js";
 import { FiUser, FiCpu, FiTool } from "solid-icons/fi";
+import { MarkdownText } from "../../lib/markdown";
+import WeatherCard, { type WeatherData } from "./WeatherCard";
+import LinkCard, { type LinkCardData } from "./LinkCard";
+
+export interface CardAttachment {
+  type: "weather" | "link";
+  data: WeatherData | LinkCardData;
+}
 
 export interface ChatMessage {
   id: string;
@@ -7,6 +15,7 @@ export interface ChatMessage {
   content: string;
   toolCalls?: string[];
   isStreaming?: boolean;
+  cards?: CardAttachment[];
 }
 
 interface Props {
@@ -30,34 +39,48 @@ const MessageBubble: Component<Props> = (props) => {
       </div>
 
       {/* Bubble */}
-      <div class="max-w-[85%]">
-        {/* Tool calls (before text, only for assistant) */}
-        <Show when={!isUser() && props.message.toolCalls?.length}>
-          <div class="mb-1.5 flex flex-wrap gap-1">
-            <For each={props.message.toolCalls}>
-              {(tool) => (
-                <span class="inline-flex items-center gap-1 rounded-full bg-white/[0.04] px-2 py-0.5 border border-white/[0.06]">
-                  <FiTool size={10} class="text-amber-400/60" />
-                  <span class="font-mono text-[10px] text-muted">{tool}</span>
-                </span>
-              )}
-            </For>
+      <div class="min-w-0 flex-1">
+        {/* Tool calls — data kept on message but hidden from display for now */}
+
+        {/* Rich cards (weather, links) — full width */}
+        <Show when={props.message.cards?.length}>
+          <For each={props.message.cards}>
+            {(card) => (
+              <Show when={card.type === "weather"} fallback={
+                <LinkCard data={card.data as LinkCardData} />
+              }>
+                <WeatherCard data={card.data as WeatherData} />
+              </Show>
+            )}
+          </For>
+        </Show>
+
+        {/* Message content — constrained width */}
+        <Show when={props.message.content}>
+          <div
+            class={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed text-left ${
+              isUser()
+                ? "rounded-tl-md bg-blue-500/15 text-primary border border-blue-500/10"
+                : "rounded-tl-md bg-white/[0.04] text-primary border border-white/[0.05]"
+            }`}
+          >
+            <Show when={isUser()} fallback={
+              <MarkdownText content={props.message.content} />
+            }>
+              <span class="whitespace-pre-wrap">{props.message.content}</span>
+            </Show>
+            <Show when={props.message.isStreaming}>
+              <span class="cursor-blink ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] bg-emerald-400/70" />
+            </Show>
           </div>
         </Show>
 
-        {/* Message content */}
-        <div
-          class={`rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed text-left ${
-            isUser()
-              ? "rounded-tl-md bg-blue-500/15 text-primary border border-blue-500/10"
-              : "rounded-tl-md bg-white/[0.04] text-primary border border-white/[0.05]"
-          }`}
-        >
-          <span class="whitespace-pre-wrap">{props.message.content}</span>
-          <Show when={props.message.isStreaming}>
-            <span class="cursor-blink ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] bg-emerald-400/70" />
-          </Show>
-        </div>
+        {/* Streaming placeholder when no content yet */}
+        <Show when={!props.message.content && props.message.isStreaming}>
+          <div class="max-w-[85%] rounded-2xl rounded-tl-md bg-white/[0.04] text-primary border border-white/[0.05] px-3.5 py-2.5 text-[13px]">
+            <span class="cursor-blink inline-block h-[14px] w-[2px] translate-y-[2px] bg-emerald-400/70" />
+          </div>
+        </Show>
       </div>
     </div>
   );

@@ -615,31 +615,20 @@ if (decision.approved) await execute(proposal)`,
     category: "Agent Patterns",
     section: "III. Agent Patterns",
     bullets: [
-      "LLM calls fail: rate limits, timeouts, malformed responses — handle them gracefully",
-      "Retry with backoff, fall back to cheaper models, and set hard limits on agent loops",
+      "LLM calls fail — rate limits, timeouts, bad responses",
+      "Retry with exponential backoff",
+      "Fall back to cheaper models when retries are exhausted",
     ],
-    code: `async function callWithRetry(prompt, options = {}) {
-  const { maxRetries = 3, fallbackModel } = options;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await generateText({
-        model: getModel(),
-        prompt,
-      });
-    } catch (err) {
-      if (attempt === maxRetries && fallbackModel) {
-        return await generateText({
-          model: getModel(fallbackModel),
-          prompt,
-        });
-      }
-      // Exponential backoff: 1s, 2s, 4s...
-      await sleep(1000 * Math.pow(2, attempt - 1));
-    }
+    codeMaxWidth: "50%",
+    code: `for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    return await generateText({ model, prompt });
+  } catch (err) {
+    await sleep(1000 * 2 ** attempt); // backoff: 2s, 4s, 8s
   }
-  throw new Error("All retries exhausted");
-}`,
+}
+// All retries failed — try a cheaper fallback model
+return await generateText({ model: fallback, prompt });`,
   },
 
   // ─── SECTION IV: ORCHESTRATION ────────────────────────────────

@@ -9,6 +9,8 @@ export interface ConversationMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+  /** Optional structured data (e.g. A2UI cards) persisted alongside the message */
+  metadata?: Record<string, unknown>;
 }
 
 export interface Conversation {

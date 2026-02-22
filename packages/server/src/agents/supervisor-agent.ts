@@ -76,10 +76,17 @@ function createStreamWriter(stream: { writeSSE: (msg: any) => Promise<void> }): 
   };
 }
 
+/** A2UI card attachment collected from tool-result events */
+interface CollectedCard {
+  type: "weather" | "link";
+  data: Record<string, unknown>;
+}
+
 /** Subscribe to bus and forward sub-agent events to the stream.
- *  Returns an unsubscribe function. */
-function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter): () => void {
-  if (!bus) return () => {};
+ *  Returns { unsub, cards } — cards accumulates A2UI card data from tool results. */
+function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter): { unsub: () => void; cards: CollectedCard[] } {
+  const cards: CollectedCard[] = [];
+  if (!bus) return { unsub: () => {}, cards };
 
   // These events are forwarded from sub-agents via the bus.
   // The supervisor writes its own lifecycle events directly.
@@ -91,11 +98,42 @@ function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter)
     "skill:inject",
   ]);
 
-  return bus.subscribe((event) => {
-    if (forwarded.has(event.type)) {
-      writer.write(event.type, event.data);
+  // Normalize bus event types (colon-delimited) to SSE event names (hyphen-delimited)
+  // and normalize data shapes to match what stream-helpers.ts emits directly.
+  const nameMap: Record<string, string> = {
+    "delegate:start": "delegate:start",
+    "delegate:end": "delegate:end",
+    "tool:call": "tool-call",
+    "tool:result": "tool-result",
+    "skill:inject": "skill:inject",
+  };
+
+  const unsub = bus.subscribe((event) => {
+    if (!forwarded.has(event.type)) return;
+    const sseEvent = nameMap[event.type] ?? event.type;
+    let data = event.data;
+    // Normalize tool event data shapes: bus uses { tool }, SSE uses { toolName }
+    if (event.type === "tool:call" && data.tool && !data.toolName) {
+      data = { ...data, toolName: data.tool };
     }
+    if (event.type === "tool:result" && data.tool && !data.toolName) {
+      data = { ...data, toolName: data.tool };
+    }
+    // Collect A2UI cards from tool results
+    if (event.type === "tool:result") {
+      const toolName = (data as any).toolName ?? (data as any).tool;
+      const result = (data as any).result;
+      if (toolName === "getWeather" && result?.location) {
+        cards.push({ type: "weather", data: result });
+      }
+      if (toolName === "getPageMeta" && result?.openGraph && (result.openGraph.title || result.openGraph.description)) {
+        cards.push({ type: "link", data: result.openGraph });
+      }
+    }
+    writer.write(sseEvent, data);
   });
+
+  return { unsub, cards };
 }
 
 // ── Agent helpers ───────────────────────────────────────────────
@@ -388,13 +426,14 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
       });
     }
 
-    /** Helper: persist the final assistant text to the conversation store */
-    async function saveAssistantResponse(text: string) {
+    /** Helper: persist the final assistant text (and any A2UI cards) to the conversation store */
+    async function saveAssistantResponse(text: string, cards?: CollectedCard[]) {
       if (cid && text) {
         await conversationStore.append(cid, {
           role: "assistant",
           content: text,
           timestamp: new Date().toISOString(),
+          ...(cards?.length ? { metadata: { cards } } : {}),
         });
       }
     }
@@ -404,7 +443,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
       return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
         const writer = createStreamWriter(stream);
         const bus = getEventBus();
-        const unsub = bridgeBusToStream(bus, writer);
+        const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer);
 
         await writer.write("session:start", { conversationId: convId });
 
@@ -438,7 +477,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
             fullText += text;
             await writer.write("text-delta", { text });
           }
-          await saveAssistantResponse(fullText);
+          await saveAssistantResponse(fullText, collectedCards);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -481,7 +520,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
     return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
       const writer = createStreamWriter(stream);
       const bus = getEventBus();
-      const unsub = bridgeBusToStream(bus, writer);
+      const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer);
 
       await writer.write("session:start", { conversationId: convId });
 
@@ -581,7 +620,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
             fullText += text;
             await writer.write("text-delta", { text });
           }
-          await saveAssistantResponse(fullText);
+          await saveAssistantResponse(fullText, collectedCards);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -625,7 +664,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
             fullText += text;
             await writer.write("text-delta", { text });
           }
-          await saveAssistantResponse(fullText);
+          await saveAssistantResponse(fullText, collectedCards);
 
           const synthesisUsage = await synthesisResult.usage;
           const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
@@ -645,7 +684,7 @@ function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
         } else {
           if (planResult.text) {
             await writer.write("text-delta", { text: planResult.text });
-            await saveAssistantResponse(planResult.text);
+            await saveAssistantResponse(planResult.text, collectedCards);
           }
 
           await writer.write("agent:end", { agent: "supervisor" });

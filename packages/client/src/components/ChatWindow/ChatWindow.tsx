@@ -4,9 +4,11 @@ import { FiMessageSquare, FiTrash2 } from "solid-icons/fi";
 import type { VisualProps } from "../../types";
 import { postSse, deleteJson, getJson } from "../../lib/api";
 import { parseSseStream } from "../../lib/sse-parser";
-import MessageBubble, { type ChatMessage } from "./MessageBubble";
+import MessageBubble, { type ChatMessage, type CardAttachment } from "./MessageBubble";
 import ToolCallBadge from "./ToolCallBadge";
 import ChatInput from "./ChatInput";
+import type { WeatherData } from "./WeatherCard";
+import type { LinkCardData } from "./LinkCard";
 
 const CONV_ID = "conv_chat_demo";
 
@@ -40,13 +42,18 @@ const ChatWindow: Component<VisualProps> = (_props) => {
     historyLoaded = true;
     try {
       const conv = await getJson<{
-        messages: Array<{ role: "user" | "assistant"; content: string }>;
+        messages: Array<{
+          role: "user" | "assistant";
+          content: string;
+          metadata?: { cards?: CardAttachment[] };
+        }>;
       }>(`/api/conversations/${CONV_ID}`);
       if (conv.messages?.length) {
         const loaded: ChatMessage[] = conv.messages.map((m) => ({
           id: `msg-${msgCounter++}`,
           role: m.role,
           content: m.content,
+          ...(m.metadata?.cards?.length ? { cards: m.metadata.cards } : {}),
         }));
         setMessages(loaded);
       }
@@ -123,6 +130,34 @@ const ChatWindow: Component<VisualProps> = (_props) => {
           }
           case "tool-result": {
             setStreamingTool(null);
+            // A2UI: detect structured tool results and attach as rich cards
+            const idx2 = msgIndex(assistantId);
+            if (idx2 !== -1 && data.result) {
+              if (data.toolName === "getWeather" && data.result.location) {
+                const card: CardAttachment = { type: "weather", data: data.result as WeatherData };
+                const existing = messages[idx2].cards ?? [];
+                setMessages(idx2, "cards", [...existing, card]);
+              }
+              if (
+                data.toolName === "getPageMeta" &&
+                data.result.openGraph &&
+                (data.result.openGraph.title || data.result.openGraph.description)
+              ) {
+                const og = data.result.openGraph;
+                const card: CardAttachment = {
+                  type: "link",
+                  data: {
+                    title: og.title,
+                    description: og.description,
+                    image: og.image,
+                    url: og.url,
+                    siteName: og.site_name ?? og.siteName,
+                  } as LinkCardData,
+                };
+                const existing = messages[idx2].cards ?? [];
+                setMessages(idx2, "cards", [...existing, card]);
+              }
+            }
             break;
           }
           case "done":
@@ -195,9 +230,7 @@ const ChatWindow: Component<VisualProps> = (_props) => {
           <For each={messages}>
             {(msg) => <MessageBubble message={msg} />}
           </For>
-          <Show when={streamingTool()}>
-            <ToolCallBadge toolName={streamingTool()!} />
-          </Show>
+          {/* Tool call badge hidden from display for now */}
         </Show>
         <div ref={messagesEndRef} />
       </div>

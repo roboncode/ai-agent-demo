@@ -8,7 +8,8 @@ import { type JSX, For } from "solid-js";
 
 function parseInline(text: string): JSX.Element {
   const segments: JSX.Element[] = [];
-  const re = /\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_|`([^`]+)`/g;
+  // Match: **bold**, *italic*, _italic_, `code`, [text](url), ![alt](url)
+  const re = /!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_|`([^`]+)`/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
@@ -16,18 +17,27 @@ function parseInline(text: string): JSX.Element {
     if (match.index > cursor) {
       segments.push(<span>{text.slice(cursor, match.index)}</span>);
     }
-    if (match[1] !== undefined) {
-      // **bold** → near-white to pop against the green base
-      segments.push(<span class="text-heading">{match[1]}</span>);
-    } else if (match[2] !== undefined) {
+    if (match[1] !== undefined && match[2] !== undefined) {
+      // ![alt](url) → skip images in text flow
+    } else if (match[3] !== undefined && match[4] !== undefined) {
+      // [text](url) → link
+      segments.push(
+        <a href={match[4]} target="_blank" rel="noopener noreferrer" class="text-accent underline underline-offset-2 hover:text-accent/80">
+          {match[3]}
+        </a>
+      );
+    } else if (match[5] !== undefined) {
+      // **bold**
+      segments.push(<span class="text-heading">{match[5]}</span>);
+    } else if (match[6] !== undefined) {
       // *italic*
-      segments.push(<span class="text-ansi-cyan">{match[2]}</span>);
-    } else if (match[3] !== undefined) {
+      segments.push(<span class="text-ansi-cyan">{match[6]}</span>);
+    } else if (match[7] !== undefined) {
       // _italic_
-      segments.push(<span class="text-ansi-cyan">{match[3]}</span>);
-    } else if (match[4] !== undefined) {
+      segments.push(<span class="text-ansi-cyan">{match[7]}</span>);
+    } else if (match[8] !== undefined) {
       // `code`
-      segments.push(<span class="text-ansi-yellow">{match[4]}</span>);
+      segments.push(<span class="text-ansi-yellow">{match[8]}</span>);
     }
     cursor = re.lastIndex;
   }

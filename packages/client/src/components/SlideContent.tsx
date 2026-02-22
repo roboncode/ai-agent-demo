@@ -420,7 +420,10 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Code snippet — only if no custom visual */}
         <Show when={props.slide.code && !props.slide.visual}>
-          <div class="w-full text-left">
+          <div
+            class="w-full text-left"
+            style={{ "max-width": props.slide.codeMaxWidth ?? "none", "margin-left": props.slide.codeMaxWidth ? "auto" : undefined, "margin-right": props.slide.codeMaxWidth ? "auto" : undefined }}
+          >
             <Show when={props.slide.codeLabel}>
               <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
                 {props.slide.codeLabel}

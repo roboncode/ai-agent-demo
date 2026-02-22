@@ -115,6 +115,8 @@ export interface SlideConfig {
   codeLabel?: string;
   /** Optional code snippet to display */
   code?: string;
+  /** Optional max-width for the code block (e.g. "66%", "600px") */
+  codeMaxWidth?: string;
   /** Optional demo configuration - slides without this hide the terminal */
   demo?: DemoConfig;
   /** Optional component to render in the right panel instead of the terminal */

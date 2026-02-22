@@ -7,6 +7,7 @@ import SlideNav from "./components/SlideNav";
 import Terminal from "./components/Terminal";
 import ApprovalButtons from "./components/ApprovalButtons";
 import ShortcutsHelp from "./components/ShortcutsHelp";
+import TableOfContents from "./components/TableOfContents";
 import { runDemo, runApproval } from "./lib/demo-runner";
 import { badgeClass } from "./lib/section-colors";
 import { getStreamMode, setStreamMode, postJson } from "./lib/api";
@@ -20,6 +21,7 @@ function App() {
   };
   const [slideIndex, setSlideIndex] = createSignal(initialSlide());
   const [showShortcuts, setShowShortcuts] = createSignal(false);
+  const [showToc, setShowToc] = createSignal(false);
   // Per-slide terminal output: keyed by slide index
   const [slideLines, setSlideLines] = createSignal<Record<number, TerminalLine[]>>({});
   const [streamingText, setStreamingText] = createSignal("");
@@ -137,10 +139,14 @@ function App() {
       const next = streamMode() === "sse" ? "ws" : "sse";
       setStreamMode(next);
       setStreamModeSignal(next);
+    } else if (e.key === "t" && !e.metaKey && !e.ctrlKey && !isInput) {
+      setShowToc((v) => !v);
     } else if ((e.key === "?" || e.key === "/") && !isInput) {
       setShowShortcuts((v) => !v);
     } else if (e.key === "Escape") {
-      if (activeConversationId()) {
+      if (showToc()) {
+        setShowToc(false);
+      } else if (activeConversationId()) {
         handleStop();
       } else {
         setShowShortcuts(false);
@@ -254,6 +260,15 @@ function App() {
         current={slideIndex()}
         onNavigate={navigate}
         onShowShortcuts={() => setShowShortcuts((v) => !v)}
+        onToggleToc={() => setShowToc((v) => !v)}
+      />
+
+      {/* Table of Contents */}
+      <TableOfContents
+        open={showToc()}
+        current={slideIndex()}
+        onNavigate={navigate}
+        onClose={() => setShowToc(false)}
       />
 
       {/* Keyboard shortcuts popover */}

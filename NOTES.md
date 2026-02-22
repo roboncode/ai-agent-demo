@@ -5,6 +5,7 @@ a/b testing
 [X] voice
 [X] web search
 [X] skillz
+notifications
 
 utility 
 
