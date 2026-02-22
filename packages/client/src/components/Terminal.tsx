@@ -3,6 +3,7 @@ import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
 import { speakText } from "../lib/api";
 import { chunkedSpeak } from "../lib/chunked-speak";
+import { MarkdownText } from "../lib/markdown";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
 
 interface Props {
@@ -84,7 +85,8 @@ const Terminal: Component<Props> = (props) => {
     return new Promise((resolve) => { doneResolve = resolve; });
   }
 
-  const canSpeak = () => !!props.responseText && !props.isStreaming;
+  const ttsEnabled = localStorage.getItem("tts-enabled") === "1";
+  const canSpeak = () => ttsEnabled && !!props.responseText && !props.isStreaming;
 
   async function handlePlay() {
     if (!props.responseText || isSpeaking()) return;
@@ -229,8 +231,8 @@ const Terminal: Component<Props> = (props) => {
         </For>
 
         {(props.streamingText || props.isStreaming) && (
-          <div class="break-words whitespace-pre-wrap text-ansi-green">
-            {props.streamingText}
+          <div class="break-words leading-relaxed text-ansi-green">
+            <MarkdownText content={props.streamingText} />
             {props.isStreaming && (
               <span class="cursor-blink text-accent-bright">█</span>
             )}

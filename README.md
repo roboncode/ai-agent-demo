@@ -133,6 +133,22 @@ All `/api/*` routes require the `X-API-Key` header.
 | GET | `/health` | Health check (no auth) |
 | WS | `/api/ws` | WebSocket endpoint |
 
+## TTS Playback
+
+The slide client has a text-to-speech play button on the terminal, but it is **disabled by default** to avoid accidental OpenAI TTS charges. To enable it, open the browser console and run:
+
+```js
+localStorage.setItem("tts-enabled", "1")
+```
+
+Refresh the page — a play/stop button will appear in the terminal title bar whenever there is a response to read aloud.
+
+To disable it again:
+
+```js
+localStorage.removeItem("tts-enabled")
+```
+
 ## Docker
 
 ```bash
