@@ -86,6 +86,12 @@ stream_sse() {
         status)
           echo -e "${YELLOW}  [$(echo "$json" | jq -r '.phase // empty')]${NC}"
           ;;
+        skill:inject)
+          local skills agent_name
+          skills=$(echo "$json" | jq -r '.skills | join(", ")')
+          agent_name=$(echo "$json" | jq -r '.agent')
+          echo -e "${MAGENTA}  ✦ Skills: ${BOLD}${skills}${NC}${MAGENTA} → ${agent_name}${NC}"
+          ;;
         done)
           echo ""
           echo ""

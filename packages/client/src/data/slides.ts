@@ -7,6 +7,7 @@ import ChoosingModelVisual from "../components/ChoosingModelVisual";
 import ContextIntelligenceVisual from "../components/ContextIntelligenceVisual";
 import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
 import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
+import A2UIVisual from "../components/A2UIVisual";
 import {
   FiCpu,
   FiMessageSquare,
@@ -32,6 +33,7 @@ import {
   FiAlertTriangle,
   FiAlertCircle,
   FiFeather,
+  FiMonitor,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -955,6 +957,33 @@ agent.run("Find the first 15 Fibonacci primes")
       "An agent is one step. A workflow chains agents with logic.",
     ],
     visual: WorkflowPipelineVisual,
+  },
+
+  {
+    id: 32,
+    title: "A2UI: Agent-to-User Interface",
+    subtitle: "From JSON to native components",
+    icon: FiMonitor,
+    category: "Production",
+    section: "V. Production Concerns",
+    bullets: [
+      "Agents return structured data, not HTML or markdown",
+      "Clients render native UI components from that data",
+      "A2UI is a declarative protocol — no executable code crosses the trust boundary",
+      "Same agent response renders on web, mobile, or desktop",
+    ],
+    visual: A2UIVisual,
+    demoHint: "The web-search agent finds a restaurant and the terminal renders a rich card",
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/web-search",
+      systemPrompt:
+        "You are a web search specialist. Search for the requested item, then use getPageMeta to retrieve OpenGraph metadata for a rich preview card.",
+      body: {
+        message:
+          "Find a popular Thai restaurant in Austin TX. Search for one, pick the best result, and get a preview card for it using getPageMeta.",
+      },
+    },
   },
 
   // ─── CONCLUSION ────────────────────────────────────────────────

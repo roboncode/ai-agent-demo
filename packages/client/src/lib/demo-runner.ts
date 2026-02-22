@@ -194,6 +194,14 @@ async function runSingleSseStream(
       }
       case "tool-result": {
         cb.addLine("tool-result", formatToolResult(data.toolName, data.result));
+        // A2UI: when getPageMeta returns OG data, emit a rich card line
+        if (
+          data.toolName === "getPageMeta" &&
+          data.result?.openGraph &&
+          (data.result.openGraph.title || data.result.openGraph.description)
+        ) {
+          cb.addLine("og-card", JSON.stringify(data.result.openGraph));
+        }
         break;
       }
       case "classification": {
@@ -239,6 +247,11 @@ async function runSingleSseStream(
       }
       case "agent:think": {
         cb.addLine("status", `-- ${data.text} --`);
+        break;
+      }
+      case "skill:inject": {
+        const skills = (data.skills as string[]).join(", ");
+        cb.addLine("status", `-- skills: ${skills} → ${data.agent} --`);
         break;
       }
       case "delegate:start": {

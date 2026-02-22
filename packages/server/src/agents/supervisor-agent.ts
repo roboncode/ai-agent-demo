@@ -85,6 +85,7 @@ function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter)
     "delegate:end",
     "tool:call",
     "tool:result",
+    "skill:inject",
   ]);
 
   return bus.subscribe((event) => {

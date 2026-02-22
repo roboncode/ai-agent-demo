@@ -91,9 +91,32 @@ export async function executeTask(
     return errorResult(agent, query, `Circular delegation blocked: ${chain.join(" → ")} → ${agent}`);
   }
 
-  // Emit delegate:start event
   const bus = getEventBus();
   const from = chain.length > 0 ? chain[chain.length - 1] : "supervisor";
+
+  // Resolve skills before emitting events so skill:inject precedes delegate:start
+  let systemPrompt = agentRegistry.getResolvedPrompt(agent)!;
+  const loadedSkillNames: string[] = [];
+
+  if (skills && skills.length > 0) {
+    const { getSkill } = await import("../storage/skill-store.js");
+    const skillSections: string[] = [];
+    for (const skillName of skills) {
+      const skill = await getSkill(skillName);
+      if (skill) {
+        skillSections.push(`### ${skill.name}\n${skill.content}`);
+        loadedSkillNames.push(skill.name);
+      }
+    }
+    if (skillSections.length > 0) {
+      systemPrompt += `\n\n# Active Skills\nApply the following behavioral instructions to your response:\n\n${skillSections.join("\n\n")}`;
+    }
+  }
+
+  // Emit skill:inject before delegate:start so watchers see skills first
+  if (loadedSkillNames.length > 0) {
+    bus?.emit("skill:inject", { agent, skills: loadedSkillNames });
+  }
   bus?.emit("delegate:start", { from, to: agent, query });
 
   // Execute with updated delegation context — propagate parent's event bus
@@ -102,23 +125,6 @@ export async function executeTask(
     depth: depth + 1,
     events: parentCtx?.events,
   };
-
-  let systemPrompt = agentRegistry.getResolvedPrompt(agent)!;
-
-  // Inject active skills into system prompt
-  if (skills && skills.length > 0) {
-    const { getSkill } = await import("../storage/skill-store.js");
-    const skillSections: string[] = [];
-    for (const skillName of skills) {
-      const skill = await getSkill(skillName);
-      if (skill) {
-        skillSections.push(`### ${skill.name}\n${skill.content}`);
-      }
-    }
-    if (skillSections.length > 0) {
-      systemPrompt += `\n\n# Active Skills\nApply the following behavioral instructions to your response:\n\n${skillSections.join("\n\n")}`;
-    }
-  }
 
   const augmentedTools = { ...registration.tools!, _clarify: CLARIFY_TOOL };
   const augmentedSystem = systemPrompt + CLARIFY_PROMPT_SUFFIX;

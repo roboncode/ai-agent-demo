@@ -12,7 +12,8 @@ export type TerminalLineType =
   | "success"
   | "warning"
   | "system-prompt"
-  | "user-prompt";
+  | "user-prompt"
+  | "og-card";
 
 export interface TerminalLine {
   id: string;
