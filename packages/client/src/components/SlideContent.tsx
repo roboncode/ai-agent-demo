@@ -16,7 +16,6 @@ interface Props {
   fullWidth: boolean;
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
-  lastResponseText?: string;
 }
 
 /* ─── Section Intro Layout ──────────────────────────────────────── */
@@ -413,7 +412,7 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Custom visual — takes priority over code block */}
         <Show when={props.slide.visual}>
-          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning, lastResponseText: props.lastResponseText })}
+          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning })}
         </Show>
 
         {/* Code snippet — only if no custom visual */}

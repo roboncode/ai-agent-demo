@@ -190,7 +190,6 @@ function App() {
               fullWidth={!hasDemo()}
               onRun={handleRun}
               isRunning={isRunning()}
-              lastResponseText={lastResponseText()}
             />
           }
           terminal={
@@ -201,6 +200,7 @@ function App() {
                 isStreaming={isStreaming()}
                 title={currentSlide().demo?.type === "sse" ? "stream" : "output"}
                 footer={terminalFooter()}
+                responseText={lastResponseText()}
               />
             ) : undefined
           }

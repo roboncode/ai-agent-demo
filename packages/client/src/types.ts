@@ -86,7 +86,6 @@ export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | 
 export interface VisualProps {
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
-  lastResponseText?: string;
 }
 
 export interface SlideConfig {

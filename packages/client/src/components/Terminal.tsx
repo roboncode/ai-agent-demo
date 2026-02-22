@@ -1,6 +1,7 @@
-import { type Component, For, createEffect, createSignal } from "solid-js";
+import { type Component, For, Show, createEffect, createSignal } from "solid-js";
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
+import { speakText } from "../lib/api";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   isStreaming: boolean;
   title?: string;
   footer?: any;
+  /** Text-only response content for TTS playback */
+  responseText?: string;
 }
 
 const SCROLL_THRESHOLD = 60; // px from bottom to be considered "at bottom"
@@ -17,6 +20,44 @@ const Terminal: Component<Props> = (props) => {
   let scrollRef: HTMLDivElement | undefined;
   const [, setIsAtBottom] = createSignal(true);
   const [userScrolled, setUserScrolled] = createSignal(false);
+  const [isSpeaking, setIsSpeaking] = createSignal(false);
+
+  let audioEl: HTMLAudioElement | null = null;
+  let blobUrl: string | null = null;
+
+  const canSpeak = () => !!props.responseText && !props.isStreaming;
+
+  async function handlePlay() {
+    if (!props.responseText || isSpeaking()) return;
+    try {
+      setIsSpeaking(true);
+      const blob = await speakText(props.responseText);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      blobUrl = URL.createObjectURL(blob);
+      audioEl = new Audio(blobUrl);
+      audioEl.onended = () => setIsSpeaking(false);
+      audioEl.onerror = () => setIsSpeaking(false);
+      await audioEl.play();
+    } catch {
+      setIsSpeaking(false);
+    }
+  }
+
+  function handleStop() {
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.currentTime = 0;
+      audioEl = null;
+    }
+    setIsSpeaking(false);
+  }
+
+  // Stop audio when terminal clears (new run starts)
+  createEffect(() => {
+    if (props.lines.length === 0) {
+      handleStop();
+    }
+  });
 
   function checkIfAtBottom() {
     if (!scrollRef) return true;
@@ -75,6 +116,31 @@ const Terminal: Component<Props> = (props) => {
             {props.title ?? "terminal"}
           </span>
         </div>
+
+        {/* Play response button — right side of titlebar */}
+        <Show when={canSpeak() || isSpeaking()}>
+          <button
+            onClick={isSpeaking() ? handleStop : handlePlay}
+            class="ml-auto flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-muted transition-colors hover:text-accent"
+            title={isSpeaking() ? "Stop playback" : "Play response"}
+          >
+            <Show
+              when={isSpeaking()}
+              fallback={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="6,4 20,12 6,20" />
+                </svg>
+              }
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+            </Show>
+            <span class="font-mono text-[10px]">
+              {isSpeaking() ? "stop" : "play"}
+            </span>
+          </button>
+        </Show>
       </div>
 
       {/* Output area */}
