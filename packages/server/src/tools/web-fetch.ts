@@ -1,0 +1,190 @@
+import { tool } from "ai";
+import { z } from "zod";
+import { toolRegistry } from "../registry/tool-registry.js";
+
+const MAX_CONTENT_LENGTH = 4000;
+const FETCH_TIMEOUT_MS = 10000;
+
+/**
+ * Strip HTML tags and extract readable text.
+ * Lightweight regex-based approach — no external deps.
+ */
+function htmlToText(html: string): string {
+  return html
+    // Remove script and style blocks entirely
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    // Remove HTML comments
+    .replace(/<!--[\s\S]*?-->/g, "")
+    // Convert common block elements to newlines
+    .replace(/<\/(p|div|h[1-6]|li|tr|br\s*\/?)>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, "")
+    // Decode common HTML entities
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    // Collapse whitespace
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Extract <title> from HTML.
+ */
+function extractTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Extract OpenGraph meta tags from the <head> section.
+ */
+function extractOpenGraph(html: string): Record<string, string> {
+  const og: Record<string, string> = {};
+  // Only look in <head> to avoid false matches in body
+  const headMatch = html.match(/<head[\s\S]*?<\/head>/i);
+  const head = headMatch ? headMatch[0] : html.slice(0, 5000);
+
+  const metaRegex =
+    /<meta\s+(?=[^>]*property=["']og:([^"']+)["'])(?=[^>]*content=["']([^"']*)["'])[^>]*\/?>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = metaRegex.exec(head)) !== null) {
+    og[match[1]] = match[2];
+  }
+
+  // Also try reversed attribute order: content before property
+  const metaRegexReversed =
+    /<meta\s+(?=[^>]*content=["']([^"']*)["'])(?=[^>]*property=["']og:([^"']+)["'])[^>]*\/?>/gi;
+  while ((match = metaRegexReversed.exec(head)) !== null) {
+    if (!og[match[2]]) {
+      og[match[2]] = match[1];
+    }
+  }
+
+  return og;
+}
+
+export const fetchPageTool = tool({
+  description:
+    "Fetch a web page and extract its readable text content. Use this to get detailed information from a specific URL found via search.",
+  inputSchema: z.object({
+    url: z.string().url().describe("The URL of the page to fetch"),
+  }),
+  execute: async ({ url }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; AIAgentBot/1.0; +https://github.com/ai-agent-demo)",
+          Accept: "text/html,application/xhtml+xml,*/*",
+        },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+      }
+
+      const html = await res.text();
+      const title = extractTitle(html);
+      let content = htmlToText(html);
+      const fullLength = content.length;
+
+      if (content.length > MAX_CONTENT_LENGTH) {
+        content = content.slice(0, MAX_CONTENT_LENGTH) + "\n\n[Content truncated]";
+      }
+
+      return {
+        url,
+        title: title ?? "Untitled",
+        content,
+        contentLength: fullLength,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+export const getPageMetaTool = tool({
+  description:
+    "Extract OpenGraph metadata from a web page for rich card display. Returns structured data including title, description, image URL, and site name.",
+  inputSchema: z.object({
+    url: z.string().url().describe("The URL to extract OpenGraph metadata from"),
+  }),
+  execute: async ({ url }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; AIAgentBot/1.0; +https://github.com/ai-agent-demo)",
+          Accept: "text/html,application/xhtml+xml,*/*",
+        },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+      }
+
+      const html = await res.text();
+      const og = extractOpenGraph(html);
+      const title = extractTitle(html);
+
+      return {
+        url,
+        openGraph: {
+          title: og.title ?? title ?? null,
+          description: og.description ?? null,
+          image: og.image ?? null,
+          url: og.url ?? url,
+          siteName: og.site_name ?? null,
+          type: og.type ?? null,
+        },
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+});
+
+export async function fetchPageDirect(url: string) {
+  return fetchPageTool.execute!({ url }, { toolCallId: "direct" } as any);
+}
+
+export async function getPageMetaDirect(url: string) {
+  return getPageMetaTool.execute!({ url }, { toolCallId: "direct" } as any);
+}
+
+// Self-registration
+toolRegistry.register({
+  name: "fetchPage",
+  description: "Fetch a web page and extract readable text content",
+  inputSchema: z.object({ url: z.string().url() }),
+  tool: fetchPageTool,
+  directExecute: (input: { url: string }) => fetchPageDirect(input.url),
+  category: "web",
+});
+
+toolRegistry.register({
+  name: "getPageMeta",
+  description: "Extract OpenGraph metadata from a web page",
+  inputSchema: z.object({ url: z.string().url() }),
+  tool: getPageMetaTool,
+  directExecute: (input: { url: string }) => getPageMetaDirect(input.url),
+  category: "web",
+});
