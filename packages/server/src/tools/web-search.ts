@@ -5,6 +5,24 @@ import { toolRegistry } from "../registry/tool-registry.js";
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
+/**
+ * Strip HTML tags and decode common HTML entities from a string.
+ * Used to clean Brave Search descriptions which contain markup.
+ */
+function stripHtml(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, "/")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
 export const searchWebTool = tool({
   description:
     "Search the web using Brave Search. Returns a list of results with titles, URLs, and descriptions.",
@@ -40,7 +58,7 @@ export const searchWebTool = tool({
 
     return {
       query,
-      totalResults: data.web?.totalResults ?? 0,
+      resultCount: webResults.length,
       results: webResults.map(
         (r: {
           title: string;
@@ -48,9 +66,9 @@ export const searchWebTool = tool({
           description: string;
           thumbnail?: { src: string };
         }) => ({
-          title: r.title,
+          title: stripHtml(r.title),
           url: r.url,
-          description: r.description,
+          description: stripHtml(r.description),
           ...(r.thumbnail?.src && { thumbnail: r.thumbnail.src }),
         })
       ),

@@ -30,6 +30,11 @@ function htmlToText(html: string): string {
     .replace(/&nbsp;/g, " ")
     // Collapse whitespace
     .replace(/[ \t]+/g, " ")
+    // Trim each line so whitespace-only lines become truly empty
+    .split("\n")
+    .map((line) => line.trim())
+    .join("\n")
+    // Collapse multiple blank lines into one
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -44,6 +49,8 @@ function extractTitle(html: string): string | null {
 
 /**
  * Extract OpenGraph meta tags from the <head> section.
+ * Handles both property= and name= attributes (some sites use name="og:..."),
+ * and any attribute ordering.
  */
 function extractOpenGraph(html: string): Record<string, string> {
   const og: Record<string, string> = {};
@@ -51,19 +58,23 @@ function extractOpenGraph(html: string): Record<string, string> {
   const headMatch = html.match(/<head[\s\S]*?<\/head>/i);
   const head = headMatch ? headMatch[0] : html.slice(0, 5000);
 
-  const metaRegex =
-    /<meta\s+(?=[^>]*property=["']og:([^"']+)["'])(?=[^>]*content=["']([^"']*)["'])[^>]*\/?>/gi;
-  let match: RegExpExecArray | null;
-  while ((match = metaRegex.exec(head)) !== null) {
-    og[match[1]] = match[2];
-  }
+  // Match all <meta> tags, then inspect attributes individually
+  const metaTagRegex = /<meta\s[^>]*>/gi;
+  let tagMatch: RegExpExecArray | null;
 
-  // Also try reversed attribute order: content before property
-  const metaRegexReversed =
-    /<meta\s+(?=[^>]*content=["']([^"']*)["'])(?=[^>]*property=["']og:([^"']+)["'])[^>]*\/?>/gi;
-  while ((match = metaRegexReversed.exec(head)) !== null) {
-    if (!og[match[2]]) {
-      og[match[2]] = match[1];
+  while ((tagMatch = metaTagRegex.exec(head)) !== null) {
+    const tag = tagMatch[0];
+
+    // Look for og: in either property= or name= attribute
+    const ogKeyMatch =
+      tag.match(/(?:property|name)=["']og:([^"']+)["']/i);
+    const contentMatch = tag.match(/content=["']([^"']*)["']/i);
+
+    if (ogKeyMatch && contentMatch) {
+      const key = ogKeyMatch[1];
+      if (!og[key]) {
+        og[key] = contentMatch[1];
+      }
     }
   }
 
