@@ -8,6 +8,8 @@ export async function initializeRegistry() {
     import("../tools/weather.js"),
     import("../tools/hackernews.js"),
     import("../tools/movies.js"),
+    import("../tools/web-search.js"),
+    import("../tools/web-fetch.js"),
   ]);
 
   // Import all agent modules (triggers self-registration)

@@ -4,6 +4,8 @@ import {
   hackernewsStoryDetailTool,
 } from "./hackernews.js";
 import { movieSearchTool, movieDetailTool } from "./movies.js";
+import { searchWebTool } from "./web-search.js";
+import { fetchPageTool, getPageMetaTool } from "./web-fetch.js";
 
 export const allTools = {
   getWeather: weatherTool,
@@ -11,6 +13,9 @@ export const allTools = {
   getStoryDetail: hackernewsStoryDetailTool,
   searchMovies: movieSearchTool,
   getMovieDetail: movieDetailTool,
+  searchWeb: searchWebTool,
+  fetchPage: fetchPageTool,
+  getPageMeta: getPageMetaTool,
 } as const;
 
 export type ToolName = keyof typeof allTools;
@@ -31,6 +36,9 @@ export {
   hackernewsStoryDetailTool,
   movieSearchTool,
   movieDetailTool,
+  searchWebTool,
+  fetchPageTool,
+  getPageMetaTool,
 };
 
 export { toolRegistry } from "../registry/tool-registry.js";
