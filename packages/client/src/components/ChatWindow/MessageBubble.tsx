@@ -1,5 +1,5 @@
 import { type Component, Show, For } from "solid-js";
-import { FiUser, FiCpu, FiTool } from "solid-icons/fi";
+import { FiUser, FiCpu } from "solid-icons/fi";
 import { MarkdownText } from "../../lib/markdown";
 import WeatherCard, { type WeatherData } from "./WeatherCard";
 import LinkCard, { type LinkCardData } from "./LinkCard";

@@ -5,7 +5,6 @@ import type { VisualProps } from "../../types";
 import { postSse, deleteJson, getJson } from "../../lib/api";
 import { parseSseStream } from "../../lib/sse-parser";
 import MessageBubble, { type ChatMessage, type CardAttachment } from "./MessageBubble";
-import ToolCallBadge from "./ToolCallBadge";
 import ChatInput from "./ChatInput";
 import type { WeatherData } from "./WeatherCard";
 import type { LinkCardData } from "./LinkCard";
@@ -20,7 +19,7 @@ let msgCounter = 0;
 let historyLoaded = false;
 
 const ChatWindow: Component<VisualProps> = (_props) => {
-  const [streamingTool, setStreamingTool] = createSignal<string | null>(null);
+  const [_streamingTool, setStreamingTool] = createSignal<string | null>(null);
   const [isBusy, setIsBusy] = createSignal(false);
   let messagesEndRef: HTMLDivElement | undefined;
   let abortController: AbortController | null = null;
