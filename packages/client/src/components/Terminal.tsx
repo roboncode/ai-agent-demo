@@ -2,6 +2,7 @@ import { type Component, For, Show, createEffect, createSignal } from "solid-js"
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
 import { speakText } from "../lib/api";
+import { chunkedSpeak } from "../lib/chunked-speak";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
 
 interface Props {
@@ -22,32 +23,99 @@ const Terminal: Component<Props> = (props) => {
   const [userScrolled, setUserScrolled] = createSignal(false);
   const [isSpeaking, setIsSpeaking] = createSignal(false);
 
-  let audioEl: HTMLAudioElement | null = null;
-  let blobUrl: string | null = null;
+  let audioCtx: AudioContext | null = null;
+  let gainNode: GainNode | null = null;
+  let activeSources: AudioBufferSourceNode[] = [];
+  let nextStartTime = 0;
+  let pendingCount = 0;
+  let doneResolve: (() => void) | null = null;
+  let stopped = false;
+
+  function getContext(): AudioContext {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+      gainNode = audioCtx.createGain();
+      gainNode.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function findStartGap(buffer: AudioBuffer): number {
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      if (Math.abs(data[i]) > 0.0005) {
+        return Math.max(0, i - 1) / buffer.sampleRate;
+      }
+    }
+    return 0;
+  }
+
+  async function scheduleBlob(blob: Blob): Promise<void> {
+    const ctx = getContext();
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const startGap = findStartGap(audioBuffer);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(gainNode!);
+
+    const startTime = Math.max(ctx.currentTime + 0.005, nextStartTime);
+    source.start(startTime, startGap);
+    nextStartTime = startTime + (audioBuffer.duration - startGap);
+
+    activeSources.push(source);
+    pendingCount++;
+
+    source.onended = () => {
+      pendingCount--;
+      const idx = activeSources.indexOf(source);
+      if (idx !== -1) activeSources.splice(idx, 1);
+      if (pendingCount === 0 && doneResolve) {
+        doneResolve();
+        doneResolve = null;
+      }
+    };
+  }
+
+  function waitForEnd(): Promise<void> {
+    if (pendingCount === 0) return Promise.resolve();
+    return new Promise((resolve) => { doneResolve = resolve; });
+  }
 
   const canSpeak = () => !!props.responseText && !props.isStreaming;
 
   async function handlePlay() {
     if (!props.responseText || isSpeaking()) return;
+    stopped = false;
     try {
       setIsSpeaking(true);
-      const blob = await speakText(props.responseText);
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-      blobUrl = URL.createObjectURL(blob);
-      audioEl = new Audio(blobUrl);
-      audioEl.onended = () => setIsSpeaking(false);
-      audioEl.onerror = () => setIsSpeaking(false);
-      await audioEl.play();
+      await chunkedSpeak(
+        props.responseText,
+        (chunk) => speakText(chunk),
+        scheduleBlob,
+        waitForEnd,
+        () => stopped,
+      );
     } catch {
+      // ignore — stop or playback error
+    } finally {
       setIsSpeaking(false);
     }
   }
 
   function handleStop() {
-    if (audioEl) {
-      audioEl.pause();
-      audioEl.currentTime = 0;
-      audioEl = null;
+    stopped = true;
+    for (const s of activeSources) {
+      try { s.stop(); } catch { /* already stopped */ }
+    }
+    activeSources = [];
+    pendingCount = 0;
+    nextStartTime = 0;
+    if (doneResolve) {
+      doneResolve();
+      doneResolve = null;
     }
     setIsSpeaking(false);
   }

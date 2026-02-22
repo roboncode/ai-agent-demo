@@ -14,6 +14,7 @@ import {
   type SttProvider,
   type SseEvent,
 } from "../lib/api";
+import { chunkedSpeak } from "../lib/chunked-speak";
 import type { Status, Exchange } from "./types";
 import SettingsPanel from "./SettingsPanel";
 import ExchangeCard from "./ExchangeCard";
@@ -260,21 +261,27 @@ export default function VoiceConversation() {
       setPlayingExchangeId(exchangeId);
       setStatus("speaking");
 
-      let blob: Blob;
       const cached = audioCache.get(exchangeId);
       if (cached) {
-        blob = cached;
+        await player.play(cached);
       } else {
-        const result = await speak(text, { speaker: settings.speaker });
-        blob = result.blob;
-        audioCache.set(exchangeId, blob);
-        if (result.audioId) {
+        let firstAudioId: string | undefined;
+        await chunkedSpeak(
+          text,
+          async (chunk) => {
+            const result = await speak(chunk, { speaker: settings.speaker });
+            if (!firstAudioId && result.audioId) firstAudioId = result.audioId;
+            return result.blob;
+          },
+          (blob) => player.schedule(blob),
+          () => player.waitForEnd(),
+          () => status() !== "speaking",
+        );
+        if (firstAudioId) {
           const idx = findIdx(exchangeId);
-          if (idx !== -1) setStore("exchanges", idx, "audioId", result.audioId);
+          if (idx !== -1) setStore("exchanges", idx, "audioId", firstAudioId);
         }
       }
-
-      await player.play(blob);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Playback failed");
     } finally {
