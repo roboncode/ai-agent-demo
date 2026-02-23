@@ -15,7 +15,7 @@ import type { AgentEventBus } from "../lib/agent-events.js";
 import type { PluginContext } from "../context.js";
 import type { AgentRegistration } from "../registry/agent-registry.js";
 
-const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
+export const DEFAULT_ORCHESTRATOR_PROMPT = `You are an orchestrator agent that routes user queries to the appropriate specialist agent.
 
 When you receive a query:
 1. Analyze what the user is asking about
@@ -37,7 +37,7 @@ Guidelines for skill selection:
 
 Always use the routing tools - never answer domain questions directly.`;
 
-export interface SupervisorAgentConfig {
+export interface OrchestratorAgentConfig {
   name: string;
   description?: string;
   systemPrompt?: string;
@@ -84,6 +84,55 @@ function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter,
   });
 
   return { unsub, cards };
+}
+
+// ── Synthesis helpers
+
+interface SynthesisSource {
+  label: string;
+  response: string;
+}
+
+function taskResultsToSources(results: TaskResult[]): SynthesisSource[] {
+  return results.map((r, i) => ({ label: `Task ${i + 1} (${r.agent})`, response: r.result.response }));
+}
+
+function buildSynthesisPrompt(sources: SynthesisSource[], userMessage: string): string {
+  const body = sources.map(s => `${s.label}:\n${s.response}`).join("\n\n");
+  return `Here are the results from the specialist agent(s):\n\n${body}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${userMessage}"`;
+}
+
+async function synthesizeStreaming(opts: {
+  ctx: PluginContext; model: string | undefined; sources: SynthesisSource[];
+  userMessage: string; skillNames: string[]; writer: StreamWriter;
+  agentName: string; abortSignal?: AbortSignal;
+}): Promise<{ text: string; usage: UsageInfo }> {
+  const { ctx, model, sources, userMessage, skillNames, writer, agentName, abortSignal } = opts;
+  const synthesisSystem = await buildSynthesisContext(ctx, skillNames);
+  if (skillNames.length > 0) await writer.write(SSE_EVENTS.SKILL_INJECT, { agent: agentName, skills: skillNames, phase: "response" });
+  await writer.write(SSE_EVENTS.AGENT_THINK, { text: DEFAULTS.SYNTHESIS_MESSAGE });
+  const prompt = buildSynthesisPrompt(sources, userMessage);
+  const synthesisStart = performance.now();
+  const synthesisResult = streamText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt, abortSignal });
+  let fullText = "";
+  for await (const text of synthesisResult.textStream) { fullText += text; await writer.write(SSE_EVENTS.TEXT_DELTA, { text }); }
+  const synthesisUsage = await synthesisResult.usage;
+  const usage = extractStreamUsage(synthesisUsage, synthesisStart);
+  return { text: fullText, usage };
+}
+
+async function synthesizeJson(opts: {
+  ctx: PluginContext; model: string | undefined; sources: SynthesisSource[];
+  userMessage: string; skillNames: string[]; agentName: string; bus?: AgentEventBus;
+}): Promise<{ text: string; usage: UsageInfo }> {
+  const { ctx, model, sources, userMessage, skillNames, agentName, bus } = opts;
+  const synthesisSystem = await buildSynthesisContext(ctx, skillNames);
+  if (skillNames.length > 0) bus?.emit(BUS_EVENTS.SKILL_INJECT, { agent: agentName, skills: skillNames, phase: "response" });
+  const prompt = buildSynthesisPrompt(sources, userMessage);
+  const synthesisStart = performance.now();
+  const synthesisResult = await generateText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt });
+  const usage = extractUsage(synthesisResult, synthesisStart);
+  return { text: synthesisResult.text, usage };
 }
 
 // ── Agent helpers
@@ -214,17 +263,12 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
           const results = await Promise.all(approvedPlan.map((task: any) => executeTask(ctx, task.agent, task.query, task.skills)));
           await writer.flush();
           const responseSkills = collectResponseSkills(results);
-          const synthesisSystem = await buildSynthesisContext(ctx, responseSkills);
-          if (responseSkills.length > 0) await writer.write(SSE_EVENTS.SKILL_INJECT, { agent: agentName, skills: responseSkills, phase: "response" });
-          await writer.write(SSE_EVENTS.AGENT_THINK, { text: DEFAULTS.SYNTHESIS_MESSAGE });
-          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-          const synthesisStart = performance.now();
-          const synthesisResult = streamText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
-          let fullText = "";
-          for await (const text of synthesisResult.textStream) { fullText += text; await writer.write(SSE_EVENTS.TEXT_DELTA, { text }); }
+          const sources = taskResultsToSources(results);
+          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+            ctx, model, sources, userMessage: message, skillNames: responseSkills,
+            writer, agentName, abortSignal,
+          });
           await saveAssistantResponse(fullText, collectedCards);
-          const synthesisUsage = await synthesisResult.usage;
-          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
           const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
           const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
           totalUsage.durationMs = Math.round(performance.now() - overallStart);
@@ -295,17 +339,12 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
           const results = await Promise.all(tasks.map((task) => executeTask(ctx, task.agent, task.query, task.skills)));
           await writer.flush();
           const responseSkills = collectResponseSkills(results);
-          const synthesisSystem = await buildSynthesisContext(ctx, responseSkills);
-          if (responseSkills.length > 0) await writer.write(SSE_EVENTS.SKILL_INJECT, { agent: agentName, skills: responseSkills, phase: "response" });
-          await writer.write(SSE_EVENTS.AGENT_THINK, { text: DEFAULTS.SYNTHESIS_MESSAGE });
-          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-          const synthesisStart = performance.now();
-          const synthesisResult = streamText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
-          let fullText = "";
-          for await (const text of synthesisResult.textStream) { fullText += text; await writer.write(SSE_EVENTS.TEXT_DELTA, { text }); }
+          const sources = taskResultsToSources(results);
+          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+            ctx, model, sources, userMessage: message, skillNames: responseSkills,
+            writer, agentName, abortSignal,
+          });
           await saveAssistantResponse(fullText, collectedCards);
-          const synthesisUsage = await synthesisResult.usage;
-          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
           const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
           const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
           totalUsage.durationMs = Math.round(performance.now() - overallStart);
@@ -318,18 +357,15 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
         const routeResults = planResult.steps.flatMap((step) => step.toolResults).filter((tr) => tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT);
         if (routeResults.length > 0) {
           const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?.[DEFAULTS.RESPONSE_SKILLS_KEY] ?? []))];
-          const synthesisSystem = await buildSynthesisContext(ctx, responseSkills);
-          if (responseSkills.length > 0) await writer.write(SSE_EVENTS.SKILL_INJECT, { agent: agentName, skills: responseSkills, phase: "response" });
-          await writer.write(SSE_EVENTS.AGENT_THINK, { text: DEFAULTS.SYNTHESIS_MESSAGE });
-          const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
-          const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-          const synthesisStart = performance.now();
-          const synthesisResult = streamText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
-          let fullText = "";
-          for await (const text of synthesisResult.textStream) { fullText += text; await writer.write(SSE_EVENTS.TEXT_DELTA, { text }); }
+          const sources: SynthesisSource[] = routeResults.map((tr, i) => ({
+            label: `Result ${i + 1}`,
+            response: (tr as any).output?.response ?? "",
+          }));
+          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+            ctx, model, sources, userMessage: message, skillNames: responseSkills,
+            writer, agentName, abortSignal,
+          });
           await saveAssistantResponse(fullText, collectedCards);
-          const synthesisUsage = await synthesisResult.usage;
-          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
           const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
           const subAgentUsages = routeResults.map((tr) => (tr as any).output?.usage).filter((u): u is UsageInfo => !!u);
           const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
@@ -360,17 +396,15 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
       const overallStart = performance.now();
       const results = await Promise.all(approvedPlan.map((task: any) => executeTask(ctx, task.agent, task.query, task.skills)));
       const responseSkills = collectResponseSkills(results);
-      const synthesisSystem = await buildSynthesisContext(ctx, responseSkills);
-      const bus = getEventBus();
-      if (responseSkills.length > 0) bus?.emit(BUS_EVENTS.SKILL_INJECT, { agent: agentName, skills: responseSkills, phase: "response" });
-      const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-      const synthesisStart = performance.now();
-      const synthesisResult = await generateText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
-      const synthUsage = extractUsage(synthesisResult, synthesisStart);
+      const sources = taskResultsToSources(results);
+      const { text, usage: synthUsage } = await synthesizeJson({
+        ctx, model, sources, userMessage: message, skillNames: responseSkills,
+        agentName, bus: getEventBus(),
+      });
       const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
       const totalUsage = mergeUsage(...subAgentUsages, synthUsage);
       totalUsage.durationMs = Math.round(performance.now() - overallStart);
-      return c.json({ response: synthesisResult.text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
+      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
     }
 
     // Build system prompt including agent+skill summaries
@@ -392,20 +426,20 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
     if (tasks.length > 0) {
       const results = await Promise.all(tasks.map((task) => executeTask(ctx, task.agent, task.query, task.skills)));
       const responseSkills = collectResponseSkills(results);
-      const synthesisSystem = await buildSynthesisContext(ctx, responseSkills);
-      const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
-      const synthesisStart = performance.now();
-      const synthesisResult = await generateText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal: getAbortSignal() });
-      const synthUsage = extractUsage(synthesisResult, synthesisStart);
-      const supervisorUsage = extractUsage(result, startTime);
+      const sources = taskResultsToSources(results);
+      const { text, usage: synthUsage } = await synthesizeJson({
+        ctx, model, sources, userMessage: message, skillNames: responseSkills,
+        agentName,
+      });
+      const orchestratorUsage = extractUsage(result, startTime);
       const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-      const totalUsage = mergeUsage(supervisorUsage, ...subAgentUsages, synthUsage);
+      const totalUsage = mergeUsage(orchestratorUsage, ...subAgentUsages, synthUsage);
       totalUsage.durationMs = Math.round(performance.now() - startTime);
-      return c.json({ response: synthesisResult.text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], agentsUsed: [...new Set(results.map((r) => r.agent))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
+      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], agentsUsed: [...new Set(results.map((r) => r.agent))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
     }
 
     // Direct routeToAgent path
-    const supervisorUsage = extractUsage(result, startTime);
+    const orchestratorUsage = extractUsage(result, startTime);
     const routeResultUsages = result.steps.flatMap((step) => step.toolResults).filter((tr) => tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT).map((tr) => (tr as any).output?.usage).filter((u): u is UsageInfo => !!u);
     const toolsUsed = result.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName);
     const agentsUsed = result.steps.flatMap((step) => step.toolCalls).map((tc) => (tc as any).input).filter((input): input is { agent: string } => !!input?.agent).map((args) => args.agent);
@@ -415,20 +449,20 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
       toolsUsed: [...new Set(toolsUsed)],
       agentsUsed: [...new Set(agentsUsed)],
       conversationId: generateConversationId(cid),
-      usage: routeResultUsages.length > 0 ? mergeUsage(supervisorUsage, ...routeResultUsages) : supervisorUsage,
+      usage: routeResultUsages.length > 0 ? mergeUsage(orchestratorUsage, ...routeResultUsages) : orchestratorUsage,
     }, 200);
   };
 }
 
 /**
- * Factory: creates and registers a supervisor agent on the given plugin context.
+ * Factory: creates and registers an orchestrator agent on the given plugin context.
  * Returns the AgentRegistration for further customization.
  */
-export function createSupervisorAgent(ctx: PluginContext, config: SupervisorAgentConfig): AgentRegistration {
+export function createOrchestratorAgent(ctx: PluginContext, config: OrchestratorAgentConfig): AgentRegistration {
   const {
     name,
-    description = "Unified supervisor agent that routes queries directly or creates parallel task plans",
-    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    description = "Unified orchestrator agent that routes queries directly or creates parallel task plans",
+    systemPrompt = DEFAULT_ORCHESTRATOR_PROMPT,
     agents,
     autonomous = true,
   } = config;

@@ -3,9 +3,9 @@ import { z } from "zod";
 import type { UsageInfo } from "../lib/ai-provider.js";
 import { runAgent } from "../lib/run-agent.js";
 import {
-  getOrchestratorAgents,
   delegationStore,
   getEventBus,
+  getOrchestratorAgents,
   type DelegationContext,
 } from "../lib/delegation-context.js";
 import { TOOL_NAMES } from "../lib/constants.js";
@@ -88,8 +88,7 @@ export async function executeTask(
   }
 
   const bus = getEventBus();
-  const orchestrators = getOrchestratorAgents(ctx.agents);
-  const from = chain.length > 0 ? chain[chain.length - 1] : (orchestrators.values().next().value ?? agent);
+  const from = chain.length > 0 ? chain[chain.length - 1] : (parentCtx?.orchestrator ?? agent);
 
   let systemPrompt = ctx.agents.getResolvedPrompt(agent)!;
   const querySkillNames: string[] = [];

@@ -279,7 +279,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
 
       if (format === "sse") {
         const bus = new AgentEventBus();
-        const delegationCtx: DelegationContext = { chain: [], depth: 0, events: bus };
+        const delegationCtx: DelegationContext = { chain: [], depth: 0, events: bus, orchestrator: name };
         return delegationStore.run(delegationCtx, () => handler(c, { systemPrompt, memoryContext }));
       }
 

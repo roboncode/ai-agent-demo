@@ -9,8 +9,8 @@ export { makeRegistryHandlers, makeRegistryStreamHandler, makeRegistryJsonHandle
 export type { AgentRegistration, ToolRegistration, AgentHandler, ActionRegistration } from "./registry/index.js";
 
 // ── Agent utilities ──
-export { createSupervisorAgent } from "./agents/supervisor.js";
-export type { SupervisorAgentConfig } from "./agents/supervisor.js";
+export { createOrchestratorAgent, DEFAULT_ORCHESTRATOR_PROMPT } from "./agents/orchestrator.js";
+export type { OrchestratorAgentConfig } from "./agents/orchestrator.js";
 export { executeTask } from "./agents/execute-task.js";
 export type { TaskResult, ClarifyItem } from "./agents/execute-task.js";
 export { AgentEventBus } from "./lib/agent-events.js";
@@ -30,7 +30,7 @@ export type { UsageInfo } from "./lib/ai-provider.js";
 export { extractUsage, extractStreamUsage, mergeUsage } from "./lib/ai-provider.js";
 
 // ── Delegation context ──
-export { delegationStore, getEventBus, getAbortSignal, MAX_DELEGATION_DEPTH } from "./lib/delegation-context.js";
+export { delegationStore, getEventBus, getAbortSignal } from "./lib/delegation-context.js";
 export type { DelegationContext } from "./lib/delegation-context.js";
 
 // ── Request registry ──
@@ -68,10 +68,6 @@ export type { VoiceProvider, TranscribeOptions, TranscribeResult, SpeakOptions, 
 export { VoiceManager } from "./voice/voice-manager.js";
 export { OpenAIVoiceProvider } from "./voice/openai-voice-provider.js";
 export type { OpenAIVoiceProviderConfig } from "./voice/openai-voice-provider.js";
-
-// ── WebSocket (optional, Bun-specific) ──
-export { createWebSocketHandler } from "./routes/ws/ws.route.js";
-export type { WebSocketConfig, WsData } from "./routes/ws/ws.route.js";
 
 // ── Auth utility ──
 export { createApiKeyAuth } from "./lib/auth.js";

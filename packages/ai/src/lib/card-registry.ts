@@ -14,7 +14,7 @@ export type CardExtractor = (toolName: string, result: unknown) => CardData | nu
  * Pluggable registry for extracting UI card data from tool results.
  *
  * Host applications register extractors that inspect tool results and produce
- * typed card data (e.g. weather cards, link previews). The supervisor uses this
+ * typed card data (e.g. weather cards, link previews). The orchestrator uses this
  * during streaming to collect cards without hardcoding tool-specific logic.
  *
  * @example

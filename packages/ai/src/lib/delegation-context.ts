@@ -11,13 +11,9 @@ export interface DelegationContext {
   events?: AgentEventBus;
   /** Signal to abort all AI SDK calls in this request tree */
   abortSignal?: AbortSignal;
+  /** Name of the orchestrator that initiated this request tree */
+  orchestrator?: string;
 }
-
-/**
- * Maximum allowed delegation depth before blocking.
- * @deprecated Import `DEFAULTS.MAX_DELEGATION_DEPTH` from `./constants.js` or use `ctx.maxDelegationDepth` instead.
- */
-export const MAX_DELEGATION_DEPTH = 3;
 
 /** Returns the set of orchestrator agent names (derived from registry at call time) */
 export function getOrchestratorAgents(registry: AgentRegistry): Set<string> {

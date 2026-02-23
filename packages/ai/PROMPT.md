@@ -20,7 +20,7 @@ schema validation.
 2. [Quick Start](#2-quick-start)
 3. [Creating Tools](#3-creating-tools)
 4. [Creating Agents](#4-creating-agents)
-5. [Supervisor / Orchestrator](#5-supervisor--orchestrator)
+5. [Orchestrator](#5-orchestrator)
 6. [Memory](#6-memory)
 7. [Skills](#7-skills)
 8. [Voice](#8-voice)
@@ -159,14 +159,14 @@ plugin.agents.register({
 });
 ```
 
-### Register a supervisor
+### Register an orchestrator
 
 ```ts
-import { createSupervisorAgent } from "@jombee/ai";
+import { createOrchestratorAgent } from "@jombee/ai";
 
-// The supervisor auto-discovers all non-orchestrator agents
-createSupervisorAgent(pluginCtx, {
-  name: "supervisor",
+// The orchestrator auto-discovers all non-orchestrator agents
+createOrchestratorAgent(pluginCtx, {
+  name: "orchestrator",
   description: "Routes queries to specialist agents",
   autonomous: true,
 });
@@ -250,7 +250,7 @@ interface ToolRegistration {
 ```ts
 interface AgentRegistration {
   name: string;                      // Unique agent identifier
-  description: string;               // Shown to supervisor for routing decisions
+  description: string;               // Shown to orchestrator for routing decisions
   tags?: string[];                   // Optional categorization
   toolNames: string[];               // Tool names (for display/metadata)
   defaultFormat: "json" | "sse";     // Default response format
@@ -354,32 +354,32 @@ Overrides persist across restarts via the `PromptStore`. They are loaded during
 
 ---
 
-## 5. Supervisor / Orchestrator
+## 5. Orchestrator
 
-The supervisor agent is the top-level orchestrator that routes user queries to
+The orchestrator agent is the top-level coordinator that routes user queries to
 specialist agents. It uses two internal tools: `routeToAgent` and `createTask`.
 
-### Creating a supervisor
+### Creating an orchestrator
 
 ```ts
-import { createSupervisorAgent } from "@jombee/ai";
+import { createOrchestratorAgent } from "@jombee/ai";
 
-const registration = createSupervisorAgent(pluginContext, {
-  name: "supervisor",
+const registration = createOrchestratorAgent(pluginContext, {
+  name: "orchestrator",
   description: "Routes queries to specialist agents",
-  systemPrompt: "Custom supervisor prompt...",  // optional, has a good default
-  agents: ["weather", "tasks"],                 // optional, auto-discovers if omitted
-  autonomous: true,                             // default: true
+  systemPrompt: "Custom orchestrator prompt...",  // optional, has a good default
+  agents: ["weather", "tasks"],                   // optional, auto-discovers if omitted
+  autonomous: true,                               // default: true
 });
 ```
 
-### SupervisorAgentConfig
+### OrchestratorAgentConfig
 
 ```ts
-interface SupervisorAgentConfig {
-  name: string;                   // Agent name (e.g. "supervisor")
+interface OrchestratorAgentConfig {
+  name: string;                   // Agent name (e.g. "orchestrator")
   description?: string;           // Description for metadata
-  systemPrompt?: string;          // Override the default supervisor prompt
+  systemPrompt?: string;          // Override the default orchestrator prompt
   agents?: string[];              // Explicit list of routable agents (omit for auto-discovery)
   autonomous?: boolean;           // When false, may pause for user approval/input
 }
@@ -387,7 +387,7 @@ interface SupervisorAgentConfig {
 
 ### How routing works
 
-1. The supervisor receives the user message with a list of available agents and skills
+1. The orchestrator receives the user message with a list of available agents and skills
 2. For single-domain queries: calls `routeToAgent(agent, query, skills?)` for immediate delegation
 3. For multi-domain queries: calls `createTask(agent, query, skills?)` multiple times to build a parallel plan
 4. Tasks run in parallel via `Promise.all`, then results are synthesized by a final LLM call
@@ -395,7 +395,7 @@ interface SupervisorAgentConfig {
 ### Plan mode
 
 When `planMode: true` is sent in the request body:
-- The supervisor only has access to `createTask` (not `routeToAgent`)
+- The orchestrator only has access to `createTask` (not `routeToAgent`)
 - It builds a plan of tasks but does not execute them
 - The response includes `awaitingApproval: true` and a `tasks` array
 - The client can then send `approvedPlan` to execute the tasks
@@ -411,12 +411,12 @@ When `planMode: true` is sent in the request body:
     { "agent": "news", "query": "latest news in NYC" }
   ]
 }
-// The supervisor skips planning and immediately executes + synthesizes
+// The orchestrator skips planning and immediately executes + synthesizes
 ```
 
 ### Non-autonomous mode
 
-When `autonomous: false`, the supervisor surfaces `_clarify` tool calls as `ask:user` SSE events and returns `awaitingApproval: true` for multi-task plans instead of auto-executing.
+When `autonomous: false`, the orchestrator surfaces `_clarify` tool calls as `ask:user` SSE events and returns `awaitingApproval: true` for multi-task plans instead of auto-executing.
 
 ### Delegation depth and safety
 
@@ -488,7 +488,7 @@ interface MemoryEntry {
 ## 7. Skills
 
 Skills are behavioral instructions stored as markdown documents with YAML frontmatter.
-The supervisor selects relevant skills when routing queries, and the framework injects
+The orchestrator selects relevant skills when routing queries, and the framework injects
 their content into agent system prompts.
 
 ### Skill document format
@@ -513,19 +513,19 @@ Keep sentences short. Use examples from everyday life.
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | `string` | Unique skill identifier (kebab-case) |
-| `description` | `string` | Shown to the supervisor for selection |
+| `description` | `string` | Shown to the orchestrator for selection |
 | `tags` | `string[]` | Categorization tags |
 | `phase` | `"query" \| "response" \| "both"` | When the skill is injected |
 
 ### Skill phases
 
 - **query**: Injected into the specialist agent's system prompt before execution. Affects how the agent processes the query and generates its response.
-- **response**: Injected into the supervisor's synthesis prompt. Affects how the final user-facing response is composed.
+- **response**: Injected into the orchestrator's synthesis prompt. Affects how the final user-facing response is composed.
 - **both**: Injected at both phases.
 
 ### Injection mechanism
 
-1. Supervisor passes `skills: ["eli5"]` when calling `routeToAgent` or `createTask`
+1. Orchestrator passes `skills: ["eli5"]` when calling `routeToAgent` or `createTask`
 2. In `executeTask`, query-phase skills are appended to the agent's system prompt under `# Active Skills`
 3. Response-phase skill names are returned as `responseSkills` and loaded during synthesis
 4. A `skill:inject` SSE event is emitted so clients can track which skills were applied
@@ -624,7 +624,7 @@ The `/voice/converse` endpoint provides a full voice conversation cycle:
 
 1. Client sends audio as `multipart/form-data`
 2. Server transcribes audio to text
-3. Server runs the text through an agent (supervisor or specified agent)
+3. Server runs the text through an agent (orchestrator or specified agent)
 4. Server converts the agent response to audio via TTS
 5. Server streams audio back with metadata headers:
    - `X-Transcription`: URI-encoded user transcript
@@ -773,7 +773,7 @@ interface AgentEvent {
 ```
 
 The bus is created per top-level SSE request and passed down through `DelegationContext`
-via `AsyncLocalStorage`. Sub-agents emit events; the supervisor forwards them to the client.
+via `AsyncLocalStorage`. Sub-agents emit events; the orchestrator forwards them to the client.
 
 ### SSE streaming protocol
 
@@ -786,17 +786,17 @@ id: <sequential integer>
 
 ```
 
-#### Full SSE event sequence (supervisor with delegation)
+#### Full SSE event sequence (orchestrator with delegation)
 
 ```
 event: session:start
 data: {"conversationId":"conv_1234_abc"}
 
 event: agent:start
-data: {"agent":"supervisor"}
+data: {"agent":"orchestrator"}
 
 event: delegate:start
-data: {"from":"supervisor","to":"weather","query":"weather in NYC"}
+data: {"from":"orchestrator","to":"weather","query":"weather in NYC"}
 
 event: tool-call
 data: {"toolName":"getWeather","args":{"location":"NYC"}}
@@ -805,7 +805,7 @@ event: tool-result
 data: {"toolName":"getWeather","result":{"temperature":72,"condition":"sunny"}}
 
 event: delegate:end
-data: {"from":"supervisor","to":"weather","summary":"The weather in NYC is..."}
+data: {"from":"orchestrator","to":"weather","summary":"The weather in NYC is..."}
 
 event: agent:think
 data: {"text":"Synthesizing results..."}
@@ -820,7 +820,7 @@ event: text-delta
 data: {"text":" is currently 72 degrees and sunny."}
 
 event: agent:end
-data: {"agent":"supervisor"}
+data: {"agent":"orchestrator"}
 
 event: done
 data: {"toolsUsed":["routeToAgent","getWeather"],"conversationId":"conv_1234_abc","usage":{"inputTokens":150,"outputTokens":80,"totalTokens":230,"cost":0.0003,"durationMs":1245}}
@@ -881,7 +881,7 @@ stream emits a `cancelled` event and closes.
 
 Card extractors inspect tool results during streaming and produce typed UI card data
 (e.g. weather cards, link previews) without hardcoding tool-specific logic in the
-supervisor.
+orchestrator.
 
 ### CardRegistry
 
@@ -922,7 +922,7 @@ plugin.cards.register((toolName, result) => {
 
 ### How cards flow through streaming
 
-1. The supervisor's `bridgeBusToStream` subscribes to the `AgentEventBus`
+1. The orchestrator's `bridgeBusToStream` subscribes to the `AgentEventBus`
 2. On `tool:result` events, it calls `cardRegistry.extract(toolName, result)` and collects cards
 3. Cards are attached as metadata when saving assistant messages to conversation storage
 
@@ -1001,23 +1001,6 @@ const auth = createApiKeyAuth("my-secret-key");
 
 The `/health` endpoint is always unauthenticated. All other routes go through the
 auth middleware if one is configured.
-
-### WebSocket bridge (Bun-specific)
-
-For Bun servers, a WebSocket handler bridges WS messages to internal SSE endpoints:
-
-```ts
-import { createWebSocketHandler } from "@jombee/ai";
-
-const wsHandlers = createWebSocketHandler(plugin, {
-  apiKey: "my-secret-key",
-  allowedPrefixes: ["/agents/", "/generate", "/tools/"],
-});
-
-// Use with Bun.serve websocket option
-```
-
-**WS protocol:** (1) Client sends `{ type: "auth", key }` (2) Server replies `{ type: "auth", success }` (3) Client sends `{ type: "request", endpoint, body }` (4) Server streams `{ event, data }` messages (5) After `done`, server closes.
 
 ---
 
@@ -1193,8 +1176,8 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 | Factory | `createAIPlugin`, `AIPluginConfig`, `AIPluginInstance`, `VoiceConfig`, `PluginContext` |
 | Registries | `AgentRegistry`, `ToolRegistry`, `makeRegistryHandlers`, `makeRegistryStreamHandler`, `makeRegistryJsonHandler`, `generateConversationId` |
 | Registry types | `AgentRegistration`, `ToolRegistration`, `AgentHandler`, `ActionRegistration` |
-| Agent utilities | `createSupervisorAgent`, `executeTask`, `AgentEventBus`, `runAgent`, `streamAgentResponse` |
-| Agent types | `SupervisorAgentConfig`, `TaskResult`, `ClarifyItem`, `AgentEvent` |
+| Agent utilities | `createOrchestratorAgent`, `DEFAULT_ORCHESTRATOR_PROMPT`, `executeTask`, `AgentEventBus`, `runAgent`, `streamAgentResponse` |
+| Agent types | `OrchestratorAgentConfig`, `TaskResult`, `ClarifyItem`, `AgentEvent` |
 | Constants | `SSE_EVENTS`, `BUS_EVENTS`, `BUS_TO_SSE_MAP`, `FORWARDED_BUS_EVENTS`, `TOOL_NAMES`, `DEFAULTS` |
 | Card registry | `CardRegistry`, `CardData`, `CardExtractor` |
 | AI provider | `UsageInfo`, `extractUsage`, `extractStreamUsage`, `mergeUsage` |
@@ -1203,5 +1186,4 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 | Storage types | `StorageProvider`, `ConversationStore`, `MemoryStore`, `SkillStore`, `TaskStore`, `PromptStore`, `AudioStore` (+ entry/model types) |
 | Storage impl | `createFileStorage`, `FileStorageOptions` |
 | Voice | `VoiceProvider`, `VoiceManager`, `OpenAIVoiceProvider`, `OpenAIVoiceProviderConfig` |
-| WebSocket | `createWebSocketHandler`, `WebSocketConfig`, `WsData` |
 | Auth | `createApiKeyAuth` |

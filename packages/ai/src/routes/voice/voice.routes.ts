@@ -165,7 +165,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
       if (!transcription.text.trim()) return c.json({ error: "Could not transcribe audio." }, 400);
 
       // Step 2: Run agent via internal fetch (same approach as original)
-      // For now, we try to find the supervisor agent or first available agent
+      // For now, we try to find the orchestrator agent or first available agent
       const requestedAgent = formData.get("agent") as string | null;
       const orchestrators = ctx.agents.getOrchestratorNames();
       const agentName = requestedAgent ?? (orchestrators.size > 0 ? orchestrators.values().next().value! : ctx.agents.list()[0]?.name ?? "assistant");

@@ -3,7 +3,7 @@
  * Run with: bun test packages/ai/test/smoke.test.ts
  */
 import { describe, test, expect } from "bun:test";
-import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, TOOL_NAMES, DEFAULTS, CardRegistry } from "../src/index.js";
+import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, TOOL_NAMES, DEFAULTS, CardRegistry, DEFAULT_ORCHESTRATOR_PROMPT } from "../src/index.js";
 import { Hono } from "hono";
 import { tool } from "ai";
 import { z } from "zod";
@@ -183,6 +183,11 @@ describe("@jombee/ai smoke test", () => {
     expect(TOOL_NAMES.CLARIFY).toBe("_clarify");
     expect(DEFAULTS.MAX_DELEGATION_DEPTH).toBe(3);
     expect(DEFAULTS.MAX_STEPS).toBe(5);
+  });
+
+  test("exports DEFAULT_ORCHESTRATOR_PROMPT", () => {
+    expect(DEFAULT_ORCHESTRATOR_PROMPT).toBeString();
+    expect(DEFAULT_ORCHESTRATOR_PROMPT).toContain("orchestrator");
   });
 
   test("CardRegistry extracts cards from tool results", () => {
