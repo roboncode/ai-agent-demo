@@ -1,6 +1,7 @@
 import { apiReference } from "@scalar/hono-api-reference";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { AppBindings } from "../app.js";
+import { env } from "../env.js";
 
 export function configureOpenAPI(app: OpenAPIHono<AppBindings>) {
   // Register the API key security scheme so it appears in Scalar's auth UI
@@ -19,7 +20,7 @@ export function configureOpenAPI(app: OpenAPIHono<AppBindings>) {
       description:
         "Demo service showcasing AI agent patterns: generation, tool use, specialized agents, supervisor routing, human-in-the-loop, memory persistence, parallel tasks, and coding agents.",
     },
-    servers: [{ url: "http://localhost:3000", description: "Local dev" }],
+    servers: [{ url: `http://localhost:${env.PORT}`, description: "Local dev" }],
     security: [{ ApiKeyAuth: [] }],
   });
 

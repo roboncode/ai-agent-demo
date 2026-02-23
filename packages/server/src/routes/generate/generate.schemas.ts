@@ -11,15 +11,7 @@ export const generateRequestSchema = z.object({
     .optional()
     .openapi({ example: "openai/gpt-4o-mini" }),
   tools: z
-    .array(
-      z.enum([
-        "getWeather",
-        "getTopStories",
-        "getStoryDetail",
-        "searchMovies",
-        "getMovieDetail",
-      ])
-    )
+    .array(z.string())
     .optional()
     .openapi({ example: ["getWeather"] }),
   maxSteps: z.number().min(1).max(10).default(5),

@@ -1,11 +1,13 @@
-import { generateText, tool, stepCountIs } from "ai";
+import { tool } from "ai";
 import { z } from "zod";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import {
   saveMemory,
   recallMemory,
   listMemories,
 } from "../storage/memory-store.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a memory-enabled agent. You can remember information across conversations by saving and recalling memories.
 
@@ -19,8 +21,6 @@ When the user asks about something they previously told you:
 3. Respond based on what you find
 
 Be proactive about saving relevant preferences, facts, and context the user shares.`;
-
-// Tools defined below, config exported after tool definitions
 
 const saveMemoryTool = tool({
   description: "Save a piece of information to persistent memory",
@@ -69,27 +69,18 @@ export const MEMORY_AGENT_CONFIG = {
   },
 };
 
-export async function runMemoryAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: {
-      saveMemory: saveMemoryTool,
-      recallMemory: recallMemoryTool,
-      listMemories: listMemoriesTool,
-    },
-    stopWhen: stepCountIs(5),
-  });
+export const runMemoryAgent = (message: string, model?: string) =>
+  runAgent(MEMORY_AGENT_CONFIG, message, model);
 
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
+// Self-registration
+const agentTools = { saveMemory: saveMemoryTool, recallMemory: recallMemoryTool, listMemories: listMemoriesTool };
 
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+agentRegistry.register({
+  name: "memory",
+  description: "Memory-enabled agent that saves and recalls information across conversations",
+  toolNames: ["saveMemory", "recallMemory", "listMemories"],
+  defaultFormat: "sse",
+  defaultSystem: SYSTEM_PROMPT,
+  tools: agentTools,
+  ...makeRegistryHandlers({ tools: agentTools }),
+});

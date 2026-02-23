@@ -1,5 +1,7 @@
 import { generateText } from "ai";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a conversation compaction agent. Your job is to take a long, verbose conversation and compress it into a concise summary that preserves all essential information.
 
@@ -33,3 +35,14 @@ export async function runCompactAgent(message: string, model?: string) {
     usage: extractUsage(result, startTime),
   };
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "compact",
+  description: "Conversation compaction agent that summarizes verbose conversations",
+  toolNames: [],
+  defaultFormat: "sse",
+  defaultSystem: SYSTEM_PROMPT,
+  tools: {},
+  ...makeRegistryHandlers({ tools: {} }),
+});

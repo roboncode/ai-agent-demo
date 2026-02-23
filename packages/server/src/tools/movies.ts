@@ -1,6 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { env } from "../env.js";
+import { toolRegistry } from "../registry/tool-registry.js";
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
@@ -95,3 +96,22 @@ export async function searchMoviesDirect(query: string) {
 export async function getMovieDetailDirect(movieId: number) {
   return movieDetailTool.execute!({ movieId }, { toolCallId: "direct" } as any);
 }
+
+// Self-registration
+toolRegistry.register({
+  name: "searchMovies",
+  description: "Search for movies by title, keywords, or description",
+  inputSchema: z.object({ query: z.string() }),
+  tool: movieSearchTool,
+  directExecute: (input: { query: string }) => searchMoviesDirect(input.query),
+  category: "movies",
+});
+
+toolRegistry.register({
+  name: "getMovieDetail",
+  description: "Get detailed information about a specific movie",
+  inputSchema: z.object({ movieId: z.number() }),
+  tool: movieDetailTool,
+  directExecute: (input: { movieId: number }) => getMovieDetailDirect(input.movieId),
+  category: "movies",
+});

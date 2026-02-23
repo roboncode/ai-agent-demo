@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { toolRegistry } from "../registry/tool-registry.js";
 
 const HN_BASE = "https://hacker-news.firebaseio.com/v0";
 
@@ -38,7 +39,8 @@ export const hackernewsTopStoriesTool = tool({
       })
     );
 
-    return { stories: stories.filter(Boolean), count: stories.filter(Boolean).length };
+    const validStories = stories.filter(Boolean);
+    return { stories: validStories, count: validStories.length };
   },
 });
 
@@ -91,3 +93,22 @@ export async function getTopStoriesDirect(limit = 10) {
 export async function getStoryDetailDirect(storyId: number) {
   return hackernewsStoryDetailTool.execute!({ storyId }, { toolCallId: "direct" } as any);
 }
+
+// Self-registration
+toolRegistry.register({
+  name: "getTopStories",
+  description: "Get the current top stories from Hacker News",
+  inputSchema: z.object({ limit: z.number().min(1).max(30).default(10) }),
+  tool: hackernewsTopStoriesTool,
+  directExecute: (input: { limit?: number }) => getTopStoriesDirect(input.limit),
+  category: "hackernews",
+});
+
+toolRegistry.register({
+  name: "getStoryDetail",
+  description: "Get detailed information about a specific HN story",
+  inputSchema: z.object({ storyId: z.number() }),
+  tool: hackernewsStoryDetailTool,
+  directExecute: (input: { storyId: number }) => getStoryDetailDirect(input.storyId),
+  category: "hackernews",
+});

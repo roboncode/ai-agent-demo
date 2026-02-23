@@ -5,6 +5,7 @@ const SKY = "#38bdf8";
 const VIOLET = "#a78bfa";
 const AMBER = "#fbbf24";
 const ROSE = "#fb7185";
+const ORANGE = "#f97316";
 
 const sections = [
   { num: "I", title: "Foundations", desc: "LLMs, prompts, and streaming", color: TEAL },
@@ -12,6 +13,7 @@ const sections = [
   { num: "III", title: "Agent Patterns", desc: "Memory, guardrails, error handling", color: VIOLET },
   { num: "IV", title: "Orchestration", desc: "Supervisors and parallel tasks", color: AMBER },
   { num: "V", title: "Production", desc: "Security, cost, and deployment", color: ROSE },
+  { num: "VI", title: "Beyond the Agent", desc: "Standards, workflows, and user interfaces", color: ORANGE },
 ];
 
 const IntroVisual: Component = () => {

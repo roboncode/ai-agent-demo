@@ -1,6 +1,10 @@
 import { generateText, tool } from "ai";
 import { z } from "zod";
+import { streamSSE } from "hono/streaming";
+import type { Context } from "hono";
 import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { generateConversationId } from "../registry/handler-factories.js";
 
 interface PendingAction {
   id: string;
@@ -9,11 +13,22 @@ interface PendingAction {
   parameters: Record<string, unknown>;
   status: "pending_approval" | "approved" | "rejected";
   result?: unknown;
-  createdAt: string;
+  createdAt: number; // timestamp for TTL cleanup
 }
 
-// In-memory store for pending actions
+// In-memory store for pending actions with TTL cleanup
 const pendingActions = new Map<string, PendingAction>();
+const ACTION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_PENDING_ACTIONS = 1000;
+
+function cleanupExpiredActions() {
+  const now = Date.now();
+  for (const [id, action] of pendingActions) {
+    if (now - action.createdAt > ACTION_TTL_MS) {
+      pendingActions.delete(id);
+    }
+  }
+}
 
 const SYSTEM_PROMPT = `You are an agent that proposes actions for human approval before executing them.
 
@@ -58,6 +73,19 @@ function generateId() {
 }
 
 export async function runHumanInLoopAgent(message: string, model?: string) {
+  // Clean up expired actions before adding new ones
+  cleanupExpiredActions();
+
+  // Enforce max size to prevent unbounded growth
+  if (pendingActions.size > MAX_PENDING_ACTIONS) {
+    const oldest = [...pendingActions.entries()]
+      .sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toRemove = oldest.slice(0, pendingActions.size - MAX_PENDING_ACTIONS);
+    for (const [id] of toRemove) {
+      pendingActions.delete(id);
+    }
+  }
+
   const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
@@ -80,7 +108,7 @@ export async function runHumanInLoopAgent(message: string, model?: string) {
         description: `${toolCall.toolName} with params: ${JSON.stringify(input)}`,
         parameters: input ?? {},
         status: "pending_approval",
-        createdAt: new Date().toISOString(),
+        createdAt: Date.now(),
       };
       pendingActions.set(id, action);
       proposals.push(action);
@@ -125,7 +153,6 @@ export async function approveAction(id: string, approved: boolean) {
   action.status = approved ? "approved" : "rejected";
 
   if (approved) {
-    // Simulate execution
     action.result = {
       executed: true,
       action: action.action,
@@ -141,12 +168,59 @@ export async function approveAction(id: string, approved: boolean) {
     };
   }
 
-  pendingActions.set(id, action);
-
-  return {
+  // Remove after resolution to prevent leak
+  const result = {
     id: action.id,
     action: action.action,
     status: action.status,
     result: action.result,
   };
+  pendingActions.delete(id);
+
+  return result;
 }
+
+// Self-registration
+agentRegistry.register({
+  name: "human-in-loop",
+  description: "Agent that proposes actions for human approval before executing",
+  toolNames: ["sendEmail", "deleteData", "publishContent"],
+  defaultFormat: "json",
+  defaultSystem: SYSTEM_PROMPT,
+  jsonHandler: async (c: Context) => {
+    const { message, model } = await c.req.json();
+    const result = await runHumanInLoopAgent(message, model);
+    return c.json(result, 200);
+  },
+  sseHandler: async (c: Context) => {
+    const { message, conversationId: cid, model } = await c.req.json();
+    const convId = generateConversationId(cid);
+    return streamSSE(c, async (stream) => {
+      let id = 0;
+      await stream.writeSSE({ id: String(id++), event: "status", data: JSON.stringify({ phase: "proposing action" }) });
+      const result = await runHumanInLoopAgent(message, model);
+      for (const action of result.pendingActions) {
+        await stream.writeSSE({ id: String(id++), event: "tool-call", data: JSON.stringify({ toolName: action.action, args: action.parameters }) });
+      }
+      await stream.writeSSE({
+        id: String(id++),
+        event: "proposal",
+        data: JSON.stringify({ actions: result.pendingActions.map((a: any) => ({ id: a.id, action: a.action, parameters: a.parameters })) }),
+      });
+      await stream.writeSSE({ id: String(id++), event: "done", data: JSON.stringify({ conversationId: convId, usage: result.usage }) });
+    });
+  },
+  actions: [
+    {
+      name: "approve",
+      method: "post",
+      summary: "Approve or reject a pending action",
+      description: "Approve or reject an action proposed by the human-in-the-loop agent",
+      handler: async (c: Context) => {
+        const { id, approved } = await c.req.json();
+        const result = await approveAction(id, approved);
+        return c.json(result, 200);
+      },
+    },
+  ],
+});

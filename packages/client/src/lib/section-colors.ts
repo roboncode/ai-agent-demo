@@ -5,6 +5,7 @@ export const sectionBadgeClass: Record<string, string> = {
   "III. Agent Patterns":    "badge-iii",
   "IV. Orchestration":      "badge-iv",
   "V. Production Concerns": "badge-v",
+  "VI. Beyond the Agent":   "badge-vi",
   "Conclusion":             "badge-conclusion",
 };
 
@@ -20,6 +21,7 @@ export const sectionAccentColor: Record<string, string> = {
   "III. Agent Patterns":    "#a78bfa",
   "IV. Orchestration":      "#fbbf24",
   "V. Production Concerns": "#fb7185",
+  "VI. Beyond the Agent":   "#f97316",
   "Conclusion":             "#34d399",
 };
 
@@ -31,6 +33,7 @@ export const sectionAccentRgb: Record<string, string> = {
   "III. Agent Patterns":    "167,139,250",
   "IV. Orchestration":      "251,191,36",
   "V. Production Concerns": "251,113,133",
+  "VI. Beyond the Agent":   "249,115,22",
   "Conclusion":             "52,211,153",
 };
 
@@ -41,6 +44,7 @@ export const sectionColors: [string, string][] = [
   ["III. Agent Patterns",    "#a78bfa"],
   ["IV. Orchestration",      "#fbbf24"],
   ["V. Production Concerns", "#fb7185"],
+  ["VI. Beyond the Agent",   "#f97316"],
 ];
 
 /** Extract the section numeral from a section string (e.g. "III. Agent Patterns" → "III") */

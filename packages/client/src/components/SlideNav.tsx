@@ -1,19 +1,29 @@
 import { type Component, For } from "solid-js";
-import { FiChevronLeft, FiChevronRight, FiCommand } from "solid-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiCommand, FiList } from "solid-icons/fi";
 
 interface Props {
   total: number;
   current: number;
   onNavigate: (index: number) => void;
   onShowShortcuts: () => void;
+  onToggleToc: () => void;
 }
 
 const SlideNav: Component<Props> = (props) => {
   return (
     <div class="bottom-nav relative z-10 flex h-11 items-center justify-between px-8">
-      <span class="font-mono text-[11px] tabular-nums text-muted">
-        {String(props.current + 1).padStart(2, "0")} / {String(props.total).padStart(2, "0")}
-      </span>
+      <div class="flex items-center gap-2">
+        <button
+          onClick={props.onToggleToc}
+          title="Table of contents (T)"
+          class="flex h-6 w-6 items-center justify-center rounded text-muted transition-colors hover:text-primary hover:shadow-[0_0_8px_rgba(52,216,204,0.15)]"
+        >
+          <FiList size={14} />
+        </button>
+        <span class="font-mono text-[11px] tabular-nums text-muted">
+          {String(props.current + 1).padStart(2, "0")} / {String(props.total).padStart(2, "0")}
+        </span>
+      </div>
 
       <div class="flex items-center gap-1.5">
         <For each={Array.from({ length: props.total })}>

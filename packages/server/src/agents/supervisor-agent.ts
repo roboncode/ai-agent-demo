@@ -1,60 +1,362 @@
-import { generateText, tool, stepCountIs } from "ai";
+import { generateText, streamText, tool, stepCountIs } from "ai";
 import { z } from "zod";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
-import { runWeatherAgent } from "./weather-agent.js";
-import { runHackernewsAgent } from "./hackernews-agent.js";
-import { runKnowledgeAgent } from "./knowledge-agent.js";
+import { streamSSE } from "hono/streaming";
+import type { Context } from "hono";
+import { getModel, extractUsage, extractStreamUsage, mergeUsage, type UsageInfo } from "../lib/ai-provider.js";
+import { executeTask, type TaskResult } from "./execute-task.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { generateConversationId } from "../registry/handler-factories.js";
+import { getOrchestratorAgents, getEventBus, getAbortSignal, delegationStore } from "../lib/delegation-context.js";
+import { registerRequest, cancelRequest, unregisterRequest } from "../lib/request-registry.js";
+import type { AgentEventBus } from "../lib/agent-events.js";
+import { conversationStore } from "../storage/conversation-store.js";
 
-const SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
-
-Available agents:
-- weather: Handles weather queries (current conditions, forecasts, temperature)
-- hackernews: Handles Hacker News queries (trending stories, tech news)
-- knowledge: Handles movie queries (search, recommendations, details)
+const DEFAULT_SYSTEM_PROMPT = `You are a supervisor agent that routes user queries to the appropriate specialist agent.
 
 When you receive a query:
 1. Analyze what the user is asking about
-2. Route to the appropriate agent using the routeToAgent tool
-3. If the query spans multiple domains, make multiple tool calls
-4. Synthesize the results into a coherent response
+2. Consider if any available skills would improve the response quality
+3. For simple, single-domain queries: use routeToAgent to delegate immediately
+4. For complex, multi-domain queries: use createTask for each sub-task (they will run in parallel)
+5. Synthesize the results into a coherent response
 
-Always use the routeToAgent tool - never answer domain questions directly.`;
+Guidelines for choosing between routeToAgent and createTask:
+- Use routeToAgent when the query maps to a single agent or when tasks must be sequential
+- Use createTask when the query spans multiple independent domains that can run in parallel
+- You can mix both in a single response if needed
 
-const routeToAgentTool = tool({
-  description:
-    "Route a query to a specialist agent. Choose the agent that best matches the query topic.",
-  inputSchema: z.object({
-    agent: z
-      .enum(["weather", "hackernews", "knowledge"])
-      .describe("The specialist agent to route to"),
-    query: z.string().describe("The query to send to the agent"),
-  }),
-  execute: async ({ agent, query }) => {
-    switch (agent) {
-      case "weather":
-        return await runWeatherAgent(query);
-      case "hackernews":
-        return await runHackernewsAgent(query);
-      case "knowledge":
-        return await runKnowledgeAgent(query);
+Guidelines for skill selection:
+- Only attach skills when they clearly match the user's intent or phrasing
+- A query like "explain simply" or "ELI5" should trigger the eli5 skill
+- A query like "give me a summary" or "TLDR" should trigger the concise-summarizer skill
+- Don't attach skills when they would not meaningfully change the response
+- You may attach multiple skills if they complement each other
+- Each skill has a phase (query/response/both) — this is handled automatically, just select the right skills
+
+Always use the routing tools - never answer domain questions directly.`;
+
+export interface SupervisorAgentConfig {
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  /** Explicit list of agent names to route to (omit for auto-discovery) */
+  agents?: string[];
+  /** Whether the supervisor operates autonomously (default true) */
+  autonomous?: boolean;
+}
+
+// ── Serialized stream writer ────────────────────────────────────
+// All SSE writes (both from the supervisor and from bus events)
+// go through this so they never race.
+
+interface StreamWriter {
+  write(event: string, data: Record<string, unknown>): Promise<void>;
+  flush(): Promise<void>;
+}
+
+function createStreamWriter(stream: { writeSSE: (msg: any) => Promise<void> }): StreamWriter {
+  let id = 0;
+  let chain = Promise.resolve();
+
+  return {
+    write(event: string, data: Record<string, unknown>) {
+      const p = chain.then(() =>
+        stream.writeSSE({
+          id: String(id++),
+          event,
+          data: JSON.stringify(data),
+        }),
+      );
+      chain = p.catch(() => {}); // keep chain alive on error
+      return p;
+    },
+    flush() {
+      return chain;
+    },
+  };
+}
+
+/** A2UI card attachment collected from tool-result events */
+interface CollectedCard {
+  type: "weather" | "link";
+  data: Record<string, unknown>;
+}
+
+/** Subscribe to bus and forward sub-agent events to the stream.
+ *  Returns { unsub, cards } — cards accumulates A2UI card data from tool results. */
+function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter): { unsub: () => void; cards: CollectedCard[] } {
+  const cards: CollectedCard[] = [];
+  if (!bus) return { unsub: () => {}, cards };
+
+  // These events are forwarded from sub-agents via the bus.
+  // The supervisor writes its own lifecycle events directly.
+  const forwarded = new Set([
+    "delegate:start",
+    "delegate:end",
+    "tool:call",
+    "tool:result",
+    "skill:inject",
+  ]);
+
+  // Normalize bus event types (colon-delimited) to SSE event names (hyphen-delimited)
+  // and normalize data shapes to match what stream-helpers.ts emits directly.
+  const nameMap: Record<string, string> = {
+    "delegate:start": "delegate:start",
+    "delegate:end": "delegate:end",
+    "tool:call": "tool-call",
+    "tool:result": "tool-result",
+    "skill:inject": "skill:inject",
+  };
+
+  const unsub = bus.subscribe((event) => {
+    if (!forwarded.has(event.type)) return;
+    const sseEvent = nameMap[event.type] ?? event.type;
+    let data = event.data;
+    // Normalize tool event data shapes: bus uses { tool }, SSE uses { toolName }
+    if (event.type === "tool:call" && data.tool && !data.toolName) {
+      data = { ...data, toolName: data.tool };
     }
-  },
-});
+    if (event.type === "tool:result" && data.tool && !data.toolName) {
+      data = { ...data, toolName: data.tool };
+    }
+    // Collect A2UI cards from tool results
+    if (event.type === "tool:result") {
+      const toolName = (data as any).toolName ?? (data as any).tool;
+      const result = (data as any).result;
+      if (toolName === "getWeather" && result?.location) {
+        cards.push({ type: "weather", data: result });
+      }
+      if (toolName === "getPageMeta" && result?.openGraph && (result.openGraph.title || result.openGraph.description)) {
+        cards.push({ type: "link", data: result.openGraph });
+      }
+    }
+    writer.write(sseEvent, data);
+  });
 
-export const SUPERVISOR_AGENT_CONFIG = {
-  system: SYSTEM_PROMPT,
-  tools: { routeToAgent: routeToAgentTool },
-};
+  return { unsub, cards };
+}
 
-export async function runSupervisorAgent(message: string, model?: string) {
+// ── Agent helpers ───────────────────────────────────────────────
+
+function getRoutableAgents(allowedAgents?: string[]) {
+  const orchestrators = getOrchestratorAgents();
+  return agentRegistry.list().filter((a) => {
+    if (orchestrators.has(a.name)) return false;
+    if (!a.tools || Object.keys(a.tools).length === 0) return false;
+    if (allowedAgents) return allowedAgents.includes(a.name);
+    return true;
+  });
+}
+
+function buildRoutingTool(allowedAgents?: string[]) {
+  const agents = getRoutableAgents(allowedAgents);
+  if (agents.length === 0) {
+    throw new Error("No routable agents available");
+  }
+  const agentNames = agents.map((a) => a.name) as [string, ...string[]];
+
+  return tool({
+    description:
+      "Route a query to a specialist agent for immediate execution. Use for single-domain queries or sequential tasks.",
+    inputSchema: z.object({
+      agent: z.enum(agentNames).describe("The specialist agent to route to"),
+      query: z.string().describe("The query to send to the agent"),
+      skills: z.array(z.string()).optional().describe("Skill names to activate for this agent (e.g. ['eli5', 'concise-summarizer'])"),
+    }),
+    execute: async ({ agent, query, skills }) => {
+      const taskResult = await executeTask(agent, query, skills);
+      return { ...taskResult.result, _responseSkills: taskResult.responseSkills ?? [] };
+    },
+  });
+}
+
+function buildCreateTaskTool(allowedAgents?: string[]) {
+  const agents = getRoutableAgents(allowedAgents);
+  if (agents.length === 0) {
+    throw new Error("No routable agents available");
+  }
+  const agentNames = agents.map((a) => a.name) as [string, ...string[]];
+
+  return tool({
+    description:
+      "Create a sub-task to be delegated to a specialist agent. Tasks are collected and executed in parallel. Use for multi-domain queries.",
+    inputSchema: z.object({
+      agent: z.enum(agentNames).describe("The specialist agent to handle this task"),
+      query: z.string().describe("The specific query for this task"),
+      skills: z.array(z.string()).optional().describe("Skill names to activate for this agent (e.g. ['eli5', 'concise-summarizer'])"),
+    }),
+    // No execute — deferred for parallel batching
+  });
+}
+
+async function buildSystemPrompt(basePrompt: string, allowedAgents?: string[]) {
+  const agents = getRoutableAgents(allowedAgents);
+  const agentList = agents.map((a) => `- ${a.name}: ${a.description}`).join("\n");
+
+  console.log(`[supervisor] Routable agents (${agents.length}):`, agents.map((a) => a.name));
+
+  let prompt = `${basePrompt}\n\nAvailable agents:\n${agentList}`;
+
+  // Append skill summaries so the supervisor knows what skills exist
+  const { getSkillSummaries } = await import("../storage/skill-store.js");
+  const skillSummaries = await getSkillSummaries();
+  prompt += `\n\nAvailable skills (pass skill names in the "skills" parameter when routing):\n${skillSummaries}`;
+
+  return prompt;
+}
+
+/** Extract createTask calls from generateText steps */
+function collectTasksFromSteps(steps: any[]): { agent: string; query: string; skills?: string[] }[] {
+  const tasks: { agent: string; query: string; skills?: string[] }[] = [];
+  for (const step of steps) {
+    for (const tc of step.toolCalls) {
+      if (tc.toolName === "createTask" && (tc as any).input) {
+        const input = (tc as any).input as { agent?: string; query?: string; skills?: string[] };
+        if (input.agent && input.query) {
+          tasks.push({ agent: input.agent, query: input.query, skills: input.skills });
+        }
+      }
+    }
+  }
+  return tasks;
+}
+
+// ── Synthesis skill helpers ──────────────────────────────────────
+
+/** Collect responseSkills from an array of TaskResults, deduped */
+function collectResponseSkills(results: TaskResult[]): string[] {
+  const all = results.flatMap((r) => r.responseSkills ?? []);
+  return [...new Set(all)];
+}
+
+/** Load response-phase skills and build a system prompt for synthesis */
+async function buildSynthesisContext(skillNames: string[]): Promise<string | undefined> {
+  if (skillNames.length === 0) return undefined;
+  const { getSkill } = await import("../storage/skill-store.js");
+  const sections: string[] = [];
+  for (const name of [...new Set(skillNames)]) {
+    const skill = await getSkill(name);
+    if (skill) sections.push(`### ${skill.name}\n${skill.content}`);
+  }
+  if (sections.length === 0) return undefined;
+  return `# Active Skills\nApply the following behavioral instructions to your response:\n\n${sections.join("\n\n")}`;
+}
+
+// ── JSON handler (non-streaming) ────────────────────────────────
+
+export async function runSupervisorAgent(message: string, model?: string, allowedAgents?: string[], autonomous = true) {
   const startTime = performance.now();
+  const routeToAgentTool = buildRoutingTool(allowedAgents);
+  const createTaskTool = buildCreateTaskTool(allowedAgents);
+  const system = await buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, allowedAgents);
+
   const result = await generateText({
     model: getModel(model),
-    system: SYSTEM_PROMPT,
+    system,
     prompt: message,
-    tools: { routeToAgent: routeToAgentTool },
+    tools: { routeToAgent: routeToAgentTool, createTask: createTaskTool },
     stopWhen: stepCountIs(5),
+    abortSignal: getAbortSignal(),
   });
+
+  // Reactive clarification check (direct routeToAgent path)
+  if (!autonomous) {
+    for (const step of result.steps) {
+      for (const tr of step.toolResults) {
+        if (tr.toolName === "routeToAgent") {
+          const output = (tr as any).output;
+          if (output?.items?.length) {
+            const supervisorUsage = extractUsage(result, startTime);
+            const subAgentUsage = output?.usage as UsageInfo | undefined;
+            const totalUsage = subAgentUsage
+              ? mergeUsage(supervisorUsage, subAgentUsage)
+              : supervisorUsage;
+            return {
+              response: output.response ?? "",
+              awaitingResponse: true,
+              items: output.items,
+              toolsUsed: ["routeToAgent"],
+              agentsUsed: [] as string[],
+              usage: totalUsage,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Check if any createTask calls were made (deferred tasks)
+  const tasks = collectTasksFromSteps(result.steps);
+
+  if (tasks.length > 0) {
+    const results = await Promise.all(
+      tasks.map((task) => executeTask(task.agent, task.query, task.skills))
+    );
+
+    // Check if any task needs clarification (parallel path)
+    if (!autonomous) {
+      const needsClarification = results.filter(r => r.result.items?.length);
+      if (needsClarification.length > 0) {
+        const allItems = needsClarification.flatMap(r =>
+          r.result.items?.map((item) => ({ ...item, agent: r.agent })) ?? []
+        );
+        const supervisorUsage = extractUsage(result, startTime);
+        const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+        return {
+          response: "",
+          awaitingResponse: true,
+          items: allItems,
+          toolsUsed: ["createTask"],
+          agentsUsed: needsClarification.map(r => r.agent),
+          usage: mergeUsage(supervisorUsage, ...subAgentUsages),
+        };
+      }
+    }
+
+    const responseSkills = collectResponseSkills(results);
+    const synthesisSystem = await buildSynthesisContext(responseSkills);
+
+    const bus = getEventBus();
+    if (responseSkills.length > 0) {
+      bus?.emit("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+    }
+
+    const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+    const synthesisStart = performance.now();
+    const synthesisResult = await generateText({
+      model: getModel(model),
+      ...(synthesisSystem && { system: synthesisSystem }),
+      prompt: synthesisPrompt,
+      abortSignal: getAbortSignal(),
+    });
+    const synthUsage = extractUsage(synthesisResult, synthesisStart);
+
+    const supervisorUsage = extractUsage(result, startTime);
+    const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+    const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+    const agentsUsed = results.map((r) => r.agent);
+
+    return {
+      response: synthesisResult.text,
+      toolsUsed: [...new Set(allToolsUsed)],
+      agentsUsed: [...new Set(agentsUsed)],
+      tasks: results.map((r) => ({
+        agent: r.agent,
+        query: r.query,
+        summary: r.result.response.slice(0, 200),
+      })),
+      usage: mergeUsage(supervisorUsage, ...subAgentUsages, synthUsage),
+    };
+  }
+
+  // Direct routeToAgent path — sub-agent usage is in tool results
+  const supervisorUsage = extractUsage(result, startTime);
+  const routeResultUsages = result.steps
+    .flatMap((step) => step.toolResults)
+    .filter((tr) => tr.toolName === "routeToAgent")
+    .map((tr) => (tr as any).output?.usage)
+    .filter((u): u is UsageInfo => !!u);
 
   const toolsUsed = result.steps
     .flatMap((step) => step.toolCalls)
@@ -70,6 +372,411 @@ export async function runSupervisorAgent(message: string, model?: string) {
     response: result.text,
     toolsUsed: [...new Set(toolsUsed)],
     agentsUsed: [...new Set(agentsUsed)],
-    usage: extractUsage(result, startTime),
+    usage: routeResultUsages.length > 0
+      ? mergeUsage(supervisorUsage, ...routeResultUsages)
+      : supervisorUsage,
   };
 }
+
+// ── SSE handler (streaming) ─────────────────────────────────────
+
+function buildSseHandler(allowedAgents?: string[], defaultAutonomous = true) {
+  return async (c: Context, { systemPrompt, memoryContext }: { systemPrompt: string; memoryContext?: string }) => {
+    const body = await c.req.json();
+    const {
+      message,
+      conversationId: cid,
+      model,
+      planMode,
+      approvedPlan,
+      autonomous: reqAutonomous,
+    } = body;
+    const convId = generateConversationId(cid);
+    const autonomous = reqAutonomous ?? defaultAutonomous;
+    const overallStart = performance.now();
+
+    // Register request for cancellation and inject abort signal into delegation context
+    const controller = registerRequest(convId);
+    const abortSignal = controller.signal;
+    // Also abort if the client disconnects
+    c.req.raw.signal.addEventListener("abort", () => cancelRequest(convId));
+    // Update the delegation context with the abort signal
+    const parentCtx = delegationStore.getStore();
+    const ctx = { ...parentCtx!, abortSignal };
+
+    let system = await buildSystemPrompt(systemPrompt, allowedAgents);
+    if (memoryContext) {
+      system += `\n\n## Memory Context\n${memoryContext}`;
+    }
+
+    // ── Conversation persistence ──────────────────────────────
+    let historyMessages: Array<{ role: "user" | "assistant"; content: string }> | undefined;
+    if (cid) {
+      const conv = await conversationStore.get(cid);
+      if (conv) {
+        historyMessages = [
+          ...conv.messages.map((m) => ({ role: m.role, content: m.content })),
+          { role: "user" as const, content: message },
+        ];
+      }
+      await conversationStore.append(cid, {
+        role: "user",
+        content: message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    /** Helper: persist the final assistant text (and any A2UI cards) to the conversation store */
+    async function saveAssistantResponse(text: string, cards?: CollectedCard[]) {
+      if (cid && text) {
+        await conversationStore.append(cid, {
+          role: "assistant",
+          content: text,
+          timestamp: new Date().toISOString(),
+          ...(cards?.length ? { metadata: { cards } } : {}),
+        });
+      }
+    }
+
+    // ── approvedPlan shortcut ─────────────────────────────────
+    if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
+      return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
+        const writer = createStreamWriter(stream);
+        const bus = getEventBus();
+        const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer);
+
+        await writer.write("session:start", { conversationId: convId });
+
+        try {
+          await writer.write("agent:start", { agent: "supervisor" });
+
+          // Execute approved tasks in parallel — bus events stream in real-time
+          const results = await Promise.all(
+            approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
+          );
+
+          // Flush any queued bus events before continuing
+          await writer.flush();
+
+          // Synthesis
+          const responseSkills = collectResponseSkills(results);
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          let fullText = "";
+          for await (const text of synthesisResult.textStream) {
+            fullText += text;
+            await writer.write("text-delta", { text });
+          }
+          await saveAssistantResponse(fullText, collectedCards);
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await writer.write("agent:end", { agent: "supervisor" });
+
+          await writer.write("done", {
+            toolsUsed: [...new Set(allToolsUsed)],
+            conversationId: convId,
+            tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+            usage: totalUsage,
+          });
+        } catch (err: any) {
+          if (err.name === "AbortError" || abortSignal?.aborted) {
+            await writer.write("cancelled", { conversationId: convId });
+          } else {
+            throw err;
+          }
+        } finally {
+          unregisterRequest(convId);
+          unsub();
+        }
+      }));
+    }
+
+    // ── Build tools based on mode ─────────────────────────────
+    const tools: Record<string, any> = {};
+
+    if (planMode) {
+      tools.createTask = buildCreateTaskTool(allowedAgents);
+    } else {
+      tools.routeToAgent = buildRoutingTool(allowedAgents);
+      tools.createTask = buildCreateTaskTool(allowedAgents);
+    }
+
+    return delegationStore.run(ctx, () => streamSSE(c, async (stream) => {
+      const writer = createStreamWriter(stream);
+      const bus = getEventBus();
+      const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer);
+
+      await writer.write("session:start", { conversationId: convId });
+
+      try {
+        await writer.write("agent:start", { agent: "supervisor" });
+
+        // ── Routing phase ───────────────────────────────────────
+        const planStart = performance.now();
+        const planResult = await generateText({
+          model: getModel(model),
+          system,
+          ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
+          tools,
+          stopWhen: stepCountIs(5),
+          abortSignal,
+        });
+        const planUsage = extractUsage(planResult, planStart);
+
+        // Flush any bus events from inline routeToAgent executions
+        await writer.flush();
+
+        // ── Reactive clarification check (direct routeToAgent) ─
+        if (!autonomous) {
+          for (const step of planResult.steps) {
+            for (const tr of step.toolResults) {
+              if (tr.toolName === "routeToAgent") {
+                const output = (tr as any).output;
+                if (output?.items?.length) {
+                  const agent = planResult.steps
+                    .flatMap((s) => s.toolCalls)
+                    .find((tc) => tc.toolName === "routeToAgent")?.input?.agent;
+                  const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
+                  await writer.write("ask:user", { items: taggedItems });
+                  await writer.write("agent:end", { agent: "supervisor" });
+
+                  const subAgentUsage = output?.usage as UsageInfo | undefined;
+                  const totalUsage = subAgentUsage
+                    ? mergeUsage(planUsage, subAgentUsage)
+                    : { ...planUsage };
+                  totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+                  await writer.write("done", {
+                    toolsUsed: ["routeToAgent"],
+                    conversationId: convId,
+                    awaitingResponse: true,
+                    items: taggedItems,
+                    usage: totalUsage,
+                  });
+                  return;
+                }
+              }
+            }
+          }
+        }
+
+        // ── deferred createTask calls ───────────────────────────
+        const tasks = collectTasksFromSteps(planResult.steps);
+
+        if (tasks.length > 0) {
+          await writer.write("agent:plan", { tasks });
+
+          // Non-autonomous: pause for approval
+          if (!autonomous) {
+            await writer.write("agent:end", { agent: "supervisor" });
+            await writer.write("done", {
+              toolsUsed: ["createTask"],
+              conversationId: convId,
+              awaitingApproval: true,
+              tasks,
+              usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+            });
+            return;
+          }
+
+          // Phase 2: Execute all tasks in parallel — bus events stream in real-time
+          const results = await Promise.all(
+            tasks.map((task) => executeTask(task.agent, task.query, task.skills))
+          );
+          await writer.flush();
+
+          // Phase 3: Synthesis
+          const responseSkills = collectResponseSkills(results);
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          let fullText = "";
+          for await (const text of synthesisResult.textStream) {
+            fullText += text;
+            await writer.write("text-delta", { text });
+          }
+          await saveAssistantResponse(fullText, collectedCards);
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await writer.write("agent:end", { agent: "supervisor" });
+          await writer.write("done", {
+            toolsUsed: [...new Set(allToolsUsed)],
+            conversationId: convId,
+            tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+            usage: totalUsage,
+          });
+          return;
+        }
+
+        // ── Direct mode ─────────────────────────────────────────
+        const routeResults = planResult.steps
+          .flatMap((step) => step.toolResults)
+          .filter((tr) => tr.toolName === "routeToAgent");
+
+        if (routeResults.length > 0) {
+          const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?._responseSkills ?? []))];
+          const synthesisSystem = await buildSynthesisContext(responseSkills);
+          if (responseSkills.length > 0) {
+            await writer.write("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+          }
+
+          await writer.write("agent:think", { text: "Synthesizing results..." });
+
+          const agentResponses = routeResults.map((tr) => (tr as any).output?.response ?? "");
+          const synthesisPrompt = `Here are the results from the specialist agent(s):\n\n${agentResponses.map((r, i) => `Result ${i + 1}:\n${r}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+          const synthesisStart = performance.now();
+          const synthesisResult = streamText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt, abortSignal });
+
+          let fullText = "";
+          for await (const text of synthesisResult.textStream) {
+            fullText += text;
+            await writer.write("text-delta", { text });
+          }
+          await saveAssistantResponse(fullText, collectedCards);
+
+          const synthesisUsage = await synthesisResult.usage;
+          const synthUsageInfo = extractStreamUsage(synthesisUsage, synthesisStart);
+          const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
+          const subAgentUsages = routeResults
+            .map((tr) => (tr as any).output?.usage)
+            .filter((u): u is UsageInfo => !!u);
+          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+          totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+          await writer.write("agent:end", { agent: "supervisor" });
+          await writer.write("done", {
+            toolsUsed: [...new Set(["routeToAgent", ...routeToolsUsed])],
+            conversationId: convId,
+            usage: totalUsage,
+          });
+        } else {
+          if (planResult.text) {
+            await writer.write("text-delta", { text: planResult.text });
+            await saveAssistantResponse(planResult.text, collectedCards);
+          }
+
+          await writer.write("agent:end", { agent: "supervisor" });
+          await writer.write("done", {
+            toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))],
+            conversationId: convId,
+            usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) },
+          });
+        }
+      } catch (err: any) {
+        if (err.name === "AbortError" || abortSignal.aborted) {
+          await writer.write("cancelled", { conversationId: convId });
+        } else {
+          throw err;
+        }
+      } finally {
+        unregisterRequest(convId);
+        unsub();
+      }
+    }));
+  };
+}
+
+function buildJsonHandler(allowedAgents?: string[], defaultAutonomous = true) {
+  return async (c: Context, { systemPrompt, memoryContext }: { systemPrompt: string; memoryContext?: string }) => {
+    const body = await c.req.json();
+    const { message, conversationId: cid, model, approvedPlan, autonomous: reqAutonomous } = body;
+    const autonomous = reqAutonomous ?? defaultAutonomous;
+
+    if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
+      const overallStart = performance.now();
+      const results = await Promise.all(
+        approvedPlan.map((task: { agent: string; query: string; skills?: string[] }) => executeTask(task.agent, task.query, task.skills))
+      );
+
+      const responseSkills = collectResponseSkills(results);
+      const synthesisSystem = await buildSynthesisContext(responseSkills);
+
+      const bus = getEventBus();
+      if (responseSkills.length > 0) {
+        bus?.emit("skill:inject", { agent: "supervisor", skills: responseSkills, phase: "response" });
+      }
+
+      const synthesisPrompt = `Here are the results from parallel task execution:\n\n${results.map((r, i) => `Task ${i + 1} (${r.agent}): ${r.query}\nResult: ${r.result.response}`).join("\n\n")}\n\nPlease synthesize these results into a coherent, comprehensive response for the user's original query: "${message}"`;
+
+      const synthesisStart = performance.now();
+      const synthesisResult = await generateText({ model: getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt: synthesisPrompt });
+      const synthUsage = extractUsage(synthesisResult, synthesisStart);
+
+      const allToolsUsed = results.flatMap((r) => r.result.toolsUsed);
+      const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+      const totalUsage = mergeUsage(...subAgentUsages, synthUsage);
+      totalUsage.durationMs = Math.round(performance.now() - overallStart);
+
+      return c.json({
+        response: synthesisResult.text,
+        toolsUsed: [...new Set(allToolsUsed)],
+        tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })),
+        conversationId: generateConversationId(cid),
+        usage: totalUsage,
+      }, 200);
+    }
+
+    let system = await buildSystemPrompt(systemPrompt, allowedAgents);
+    if (memoryContext) system += `\n\n## Memory Context\n${memoryContext}`;
+
+    const result = await runSupervisorAgent(message, model, allowedAgents, autonomous);
+    return c.json({ ...result, conversationId: generateConversationId(cid) }, 200);
+  };
+}
+
+export function createSupervisorAgent(config: SupervisorAgentConfig) {
+  const {
+    name,
+    description = "Unified supervisor agent that routes queries directly or creates parallel task plans",
+    systemPrompt = DEFAULT_SYSTEM_PROMPT,
+    agents,
+    autonomous = true,
+  } = config;
+
+  agentRegistry.register({
+    name,
+    description,
+    toolNames: ["routeToAgent", "createTask"],
+    defaultFormat: "sse",
+    defaultSystem: systemPrompt,
+    isOrchestrator: true,
+    agents,
+    sseHandler: buildSseHandler(agents, autonomous),
+    jsonHandler: buildJsonHandler(agents, autonomous),
+  });
+}
+
+// Default self-registration
+createSupervisorAgent({ name: "supervisor" });

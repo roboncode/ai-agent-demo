@@ -1,9 +1,10 @@
-import { generateText, stepCountIs } from "ai";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import {
   hackernewsTopStoriesTool,
   hackernewsStoryDetailTool,
 } from "../tools/hackernews.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a Hacker News analyst agent. Your job is to help users discover and understand trending tech stories.
 
@@ -23,26 +24,18 @@ export const HACKERNEWS_AGENT_CONFIG = {
   },
 };
 
-export async function runHackernewsAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: {
-      getTopStories: hackernewsTopStoriesTool,
-      getStoryDetail: hackernewsStoryDetailTool,
-    },
-    stopWhen: stepCountIs(5),
-  });
+export const runHackernewsAgent = (message: string, model?: string) =>
+  runAgent(HACKERNEWS_AGENT_CONFIG, message, model);
 
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
+// Self-registration
+const agentTools = { getTopStories: hackernewsTopStoriesTool, getStoryDetail: hackernewsStoryDetailTool };
 
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+agentRegistry.register({
+  name: "hackernews",
+  description: "Fetches trending stories from the Hacker News website (news.ycombinator.com). Only use for queries explicitly about Hacker News, HN, or trending tech news — NOT for general knowledge, web searches, or factual questions.",
+  toolNames: ["getTopStories", "getStoryDetail"],
+  defaultFormat: "sse",
+  defaultSystem: SYSTEM_PROMPT,
+  tools: agentTools,
+  ...makeRegistryHandlers({ tools: agentTools }),
+});

@@ -1,31 +1,38 @@
 import type { Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { generateText, streamText, stepCountIs } from "ai";
-import { getModel, extractUsage } from "../../lib/ai-provider.js";
-import { allTools, type ToolName } from "../../tools/index.js";
+import { getModel, extractUsage, extractStreamUsage } from "../../lib/ai-provider.js";
+import { allTools, getToolsByNames, type ToolName } from "../../tools/index.js";
+import { env } from "../../env.js";
 
-function pickTools(toolNames?: ToolName[]) {
-  if (!toolNames || toolNames.length === 0) return undefined;
-  const tools: Record<string, (typeof allTools)[ToolName]> = {};
-  for (const name of toolNames) {
-    if (allTools[name]) tools[name] = allTools[name];
-  }
-  return tools;
+const VALID_TOOL_NAMES = new Set(Object.keys(allTools));
+
+function validateToolNames(names: string[]): string[] {
+  return names.filter((n) => !VALID_TOOL_NAMES.has(n));
 }
 
 export async function handleGenerate(c: Context) {
   const body = await c.req.json();
   const { prompt, systemPrompt, model, tools: toolNames, maxSteps } = body;
 
-  const selectedTools = pickTools(toolNames);
+  if (toolNames?.length) {
+    const unknown = validateToolNames(toolNames);
+    if (unknown.length > 0) {
+      return c.json({ error: `Unknown tool(s): ${unknown.join(", ")}` }, 400);
+    }
+  }
+
+  const tools = toolNames?.length
+    ? getToolsByNames(toolNames as ToolName[])
+    : undefined;
 
   const startTime = performance.now();
   const result = await generateText({
     model: getModel(model),
     system: systemPrompt,
     prompt,
-    tools: selectedTools,
-    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
+    tools,
+    stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   const toolResults = result.steps
@@ -34,7 +41,7 @@ export async function handleGenerate(c: Context) {
 
   return c.json({
     text: result.text,
-    model: model ?? "openai/gpt-4o-mini",
+    model: model ?? env.DEFAULT_MODEL,
     usage: extractUsage(result, startTime),
     toolResults: toolResults.length > 0 ? toolResults : undefined,
     finishReason: result.finishReason,
@@ -45,15 +52,24 @@ export async function handleGenerateStream(c: Context) {
   const body = await c.req.json();
   const { prompt, systemPrompt, model, tools: toolNames, maxSteps } = body;
 
-  const selectedTools = pickTools(toolNames);
+  if (toolNames?.length) {
+    const unknown = validateToolNames(toolNames);
+    if (unknown.length > 0) {
+      return c.json({ error: `Unknown tool(s): ${unknown.join(", ")}` }, 400);
+    }
+  }
+
+  const tools = toolNames?.length
+    ? getToolsByNames(toolNames as ToolName[])
+    : undefined;
 
   const startTime = performance.now();
   const result = streamText({
     model: getModel(model),
     system: systemPrompt,
     prompt,
-    tools: selectedTools,
-    stopWhen: selectedTools ? stepCountIs(maxSteps ?? 5) : undefined,
+    tools,
+    stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
   });
 
   return streamSSE(c, async (stream) => {
@@ -67,23 +83,15 @@ export async function handleGenerateStream(c: Context) {
       });
     }
 
-    // After stream completes, send final event with usage
     const usage = await result.usage;
-    const durationMs = Math.round(performance.now() - startTime);
-    const rawCost = usage?.raw?.cost;
+    const usageInfo = extractStreamUsage(usage, startTime);
 
     await stream.writeSSE({
       id: String(id++),
       event: "done",
       data: JSON.stringify({
-        finishReason: "stop",
-        usage: {
-          inputTokens: usage?.inputTokens ?? 0,
-          outputTokens: usage?.outputTokens ?? 0,
-          totalTokens: usage?.totalTokens ?? ((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)),
-          cost: typeof rawCost === "number" ? rawCost : null,
-          durationMs,
-        },
+        finishReason: await result.finishReason,
+        usage: usageInfo,
       }),
     });
   });

@@ -1,11 +1,4 @@
-import { createEnv } from "@t3-oss/env-core";
-import { z } from "zod";
-
-export const env = createEnv({
-  clientPrefix: "VITE_",
-  client: {
-    VITE_API_URL: z.string().url().default("http://localhost:3000"),
-    VITE_API_KEY: z.string().default("demo"),
-  },
-  runtimeEnv: import.meta.env,
-});
+export const env = {
+  VITE_API_URL: import.meta.env.VITE_API_URL ?? "http://localhost:3000",
+  VITE_API_KEY: import.meta.env.VITE_API_KEY ?? "demo",
+} as const;

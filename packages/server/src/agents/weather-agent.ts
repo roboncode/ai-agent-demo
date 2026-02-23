@@ -1,6 +1,7 @@
-import { generateText, stepCountIs } from "ai";
-import { getModel, extractUsage } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
 import { weatherTool } from "../tools/weather.js";
+import { agentRegistry } from "../registry/agent-registry.js";
+import { makeRegistryHandlers } from "../registry/handler-factories.js";
 
 const SYSTEM_PROMPT = `You are a weather specialist agent. Your job is to provide accurate, helpful weather information.
 
@@ -17,23 +18,16 @@ export const WEATHER_AGENT_CONFIG = {
   tools: { getWeather: weatherTool },
 };
 
-export async function runWeatherAgent(message: string, model?: string) {
-  const startTime = performance.now();
-  const result = await generateText({
-    model: getModel(model),
-    system: SYSTEM_PROMPT,
-    prompt: message,
-    tools: { getWeather: weatherTool },
-    stopWhen: stepCountIs(5),
-  });
+export const runWeatherAgent = (message: string, model?: string) =>
+  runAgent(WEATHER_AGENT_CONFIG, message, model);
 
-  const toolsUsed = result.steps
-    .flatMap((step) => step.toolCalls)
-    .map((tc) => tc.toolName);
-
-  return {
-    response: result.text,
-    toolsUsed: [...new Set(toolsUsed)],
-    usage: extractUsage(result, startTime),
-  };
-}
+// Self-registration
+agentRegistry.register({
+  name: "weather",
+  description: "Weather specialist agent using open-meteo data",
+  toolNames: ["getWeather"],
+  defaultFormat: "sse",
+  defaultSystem: SYSTEM_PROMPT,
+  tools: { getWeather: weatherTool },
+  ...makeRegistryHandlers({ tools: { getWeather: weatherTool } }),
+});

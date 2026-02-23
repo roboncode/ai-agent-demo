@@ -1,6 +1,9 @@
-import { type Component, For, createEffect, createSignal } from "solid-js";
+import { type Component, For, Show, createEffect, createSignal } from "solid-js";
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
+import { speakText } from "../lib/api";
+import { chunkedSpeak } from "../lib/chunked-speak";
+import { MarkdownText } from "../lib/markdown";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
 
 interface Props {
@@ -9,6 +12,16 @@ interface Props {
   isStreaming: boolean;
   title?: string;
   footer?: any;
+  /** Text-only response content for TTS playback */
+  responseText?: string;
+  /** Whether a demo is currently running */
+  isRunning?: boolean;
+  /** Active conversation ID for cancellation */
+  activeConversationId?: string | null;
+  /** Callback to cancel the active stream */
+  onStop?: () => void;
+  /** Callback to clear conversation history */
+  onClearHistory?: () => void;
 }
 
 const SCROLL_THRESHOLD = 60; // px from bottom to be considered "at bottom"
@@ -17,6 +30,112 @@ const Terminal: Component<Props> = (props) => {
   let scrollRef: HTMLDivElement | undefined;
   const [, setIsAtBottom] = createSignal(true);
   const [userScrolled, setUserScrolled] = createSignal(false);
+  const [isSpeaking, setIsSpeaking] = createSignal(false);
+
+  let audioCtx: AudioContext | null = null;
+  let gainNode: GainNode | null = null;
+  let activeSources: AudioBufferSourceNode[] = [];
+  let nextStartTime = 0;
+  let pendingCount = 0;
+  let doneResolve: (() => void) | null = null;
+  let stopped = false;
+
+  function getContext(): AudioContext {
+    if (!audioCtx) {
+      audioCtx = new AudioContext();
+      gainNode = audioCtx.createGain();
+      gainNode.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function findStartGap(buffer: AudioBuffer): number {
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      if (Math.abs(data[i]) > 0.0005) {
+        return Math.max(0, i - 1) / buffer.sampleRate;
+      }
+    }
+    return 0;
+  }
+
+  async function scheduleBlob(blob: Blob): Promise<void> {
+    const ctx = getContext();
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    const startGap = findStartGap(audioBuffer);
+
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(gainNode!);
+
+    const startTime = Math.max(ctx.currentTime + 0.005, nextStartTime);
+    source.start(startTime, startGap);
+    nextStartTime = startTime + (audioBuffer.duration - startGap);
+
+    activeSources.push(source);
+    pendingCount++;
+
+    source.onended = () => {
+      pendingCount--;
+      const idx = activeSources.indexOf(source);
+      if (idx !== -1) activeSources.splice(idx, 1);
+      if (pendingCount === 0 && doneResolve) {
+        doneResolve();
+        doneResolve = null;
+      }
+    };
+  }
+
+  function waitForEnd(): Promise<void> {
+    if (pendingCount === 0) return Promise.resolve();
+    return new Promise((resolve) => { doneResolve = resolve; });
+  }
+
+  const ttsEnabled = localStorage.getItem("tts-enabled") === "1";
+  const canSpeak = () => ttsEnabled && !!props.responseText && !props.isStreaming;
+
+  async function handlePlay() {
+    if (!props.responseText || isSpeaking()) return;
+    stopped = false;
+    try {
+      setIsSpeaking(true);
+      await chunkedSpeak(
+        props.responseText,
+        (chunk) => speakText(chunk),
+        scheduleBlob,
+        waitForEnd,
+        () => stopped,
+      );
+    } catch {
+      // ignore — stop or playback error
+    } finally {
+      setIsSpeaking(false);
+    }
+  }
+
+  function handleStop() {
+    stopped = true;
+    for (const s of activeSources) {
+      try { s.stop(); } catch { /* already stopped */ }
+    }
+    activeSources = [];
+    pendingCount = 0;
+    nextStartTime = 0;
+    if (doneResolve) {
+      doneResolve();
+      doneResolve = null;
+    }
+    setIsSpeaking(false);
+  }
+
+  // Stop audio when terminal clears (new run starts)
+  createEffect(() => {
+    if (props.lines.length === 0) {
+      handleStop();
+    }
+  });
 
   function checkIfAtBottom() {
     if (!scrollRef) return true;
@@ -75,6 +194,59 @@ const Terminal: Component<Props> = (props) => {
             {props.title ?? "terminal"}
           </span>
         </div>
+
+        {/* Right side of titlebar: clear + stop + TTS buttons */}
+        <div class="ml-auto flex items-center gap-1">
+          <Show when={props.onClearHistory && props.lines.length > 0}>
+            <button
+              onClick={() => props.onClearHistory?.()}
+              class="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-muted/50 transition-colors hover:text-red-400"
+              title="Clear conversation"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          </Show>
+
+          <Show when={(props.isRunning || props.isStreaming) && props.activeConversationId && props.onStop}>
+            <button
+              onClick={() => props.onStop?.()}
+              class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-red-400 transition-colors hover:text-red-300"
+              title="Stop stream (Esc)"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              <span class="font-mono text-[10px]">stop</span>
+            </button>
+          </Show>
+
+          <Show when={canSpeak() || isSpeaking()}>
+            <button
+              onClick={isSpeaking() ? handleStop : handlePlay}
+              class="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-muted transition-colors hover:text-accent"
+              title={isSpeaking() ? "Stop playback" : "Play response"}
+            >
+              <Show
+                when={isSpeaking()}
+                fallback={
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="6,4 20,12 6,20" />
+                  </svg>
+                }
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </Show>
+              <span class="font-mono text-[10px]">
+                {isSpeaking() ? "stop" : "play"}
+              </span>
+            </button>
+          </Show>
+        </div>
       </div>
 
       {/* Output area */}
@@ -95,8 +267,8 @@ const Terminal: Component<Props> = (props) => {
         </For>
 
         {(props.streamingText || props.isStreaming) && (
-          <div class="break-words whitespace-pre-wrap text-ansi-green">
-            {props.streamingText}
+          <div class="break-words leading-relaxed text-ansi-green">
+            <MarkdownText content={props.streamingText} />
             {props.isStreaming && (
               <span class="cursor-blink text-accent-bright">█</span>
             )}

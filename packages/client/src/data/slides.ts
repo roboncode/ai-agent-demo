@@ -7,6 +7,13 @@ import ChoosingModelVisual from "../components/ChoosingModelVisual";
 import ContextIntelligenceVisual from "../components/ContextIntelligenceVisual";
 import McpDiscoveryVisual from "../components/McpDiscoveryVisual";
 import WorkflowPipelineVisual from "../components/WorkflowPipelineVisual";
+import A2UIVisual from "../components/A2UIVisual";
+import VoiceVisual from "../components/VoiceVisual";
+import KanbanVisual from "../components/KanbanVisual";
+import ThinkingBeyondVisual from "../components/ThinkingBeyondVisual";
+import EvaluationFeedbackVisual from "../components/EvaluationFeedbackVisual";
+import DeploymentScalingVisual from "../components/DeploymentScalingVisual";
+import ChatWindowVisual from "../components/ChatWindow";
 import {
   FiCpu,
   FiMessageSquare,
@@ -31,6 +38,13 @@ import {
   FiGitMerge,
   FiAlertTriangle,
   FiAlertCircle,
+  FiFeather,
+  FiMonitor,
+  FiMic,
+  FiCheckSquare,
+  FiCompass,
+  FiThumbsUp,
+  FiServer,
 } from "solid-icons/fi";
 
 export const slides: SlideConfig[] = [
@@ -44,10 +58,11 @@ export const slides: SlideConfig[] = [
     layout: "intro",
     bullets: [
       "Foundations — LLMs, prompts, and streaming",
-      "From LLM to Agent — Tools, decisions, and knowledge",
+      "From LLM to Agent — Tools, decisions, knowledge, and MCP",
       "Agent Patterns — Memory, guardrails, error handling",
-      "Orchestration — Supervisors and parallel tasks",
-      "Production — Security, cost, and deployment",
+      "Orchestration — Supervisors, parallel tasks, and workflows",
+      "Production — Security, cost, evaluation, and deployment",
+      "Beyond the Agent — Conversation, voice, and the bigger picture",
     ],
   },
 
@@ -85,7 +100,7 @@ export const slides: SlideConfig[] = [
     demoHint: "We send a question and watch the response stream in token by token",
     demo: {
       type: "sse",
-      endpoint: "/api/generate/stream",
+      endpoint: "/api/generate?format=sse",
       systemPrompt: "You are a concise technical explainer.",
       body: {
         prompt: "Explain what an AI agent is in 2-3 sentences.",
@@ -129,7 +144,7 @@ event: done
 data: {"usage": {"totalTokens": 142}}`,
     demo: {
       type: "sse",
-      endpoint: "/api/generate/stream",
+      endpoint: "/api/generate?format=sse",
       systemPrompt: "You are a creative poet.",
       body: {
         prompt: "Write a short poem about AI agents working together.",
@@ -154,7 +169,7 @@ data: {"usage": {"totalTokens": 142}}`,
         label: "With streaming — token by token",
         demo: {
           type: "sse",
-          endpoint: "/api/generate/stream",
+          endpoint: "/api/generate?format=sse",
           systemPrompt: "You are a creative poet.",
           body: {
             prompt: "Write a short poem about AI agents working together.",
@@ -188,6 +203,7 @@ data: {"usage": {"totalTokens": 142}}`,
       "What Is a Tool?",
       "Giving Your Agent Hands",
       "Knowledge Base",
+      "MCP",
     ],
   },
 
@@ -223,7 +239,7 @@ POST /api/agents/weather
         label: "Ask the LLM — no tools, no real data",
         demo: {
           type: "sse",
-          endpoint: "/api/generate/stream",
+          endpoint: "/api/generate?format=sse",
           systemPrompt: "You are a helpful assistant.",
           body: {
             prompt: "What is the weather like in San Francisco right now?",
@@ -266,12 +282,12 @@ POST /api/agents/weather
 }
 
 // Direct call — no AI needed:
-POST /api/tools/weather
+POST /api/tools/getWeather
 { "location": "San Francisco" }`,
     demoHint: "We call a weather tool directly — plain function, plain data",
     demo: {
       type: "json",
-      endpoint: "/api/tools/weather",
+      endpoint: "/api/tools/getWeather",
       body: {
         location: "San Francisco",
       },
@@ -336,6 +352,20 @@ agent.run("Compare Tokyo and New York weather")
           "Who are the top three main characters in the TV show Lost and which actors played them?",
       },
     },
+  },
+
+  {
+    id: 18,
+    title: "MCP",
+    subtitle: "USB-C for AI tools",
+    icon: FiLink,
+    category: "From LLM to Agent",
+    section: "II. From LLM to Agent",
+    bullets: [
+      "A standard for AI to discover and use tools — no hardcoding",
+      "Any MCP-compatible tool works with any MCP-compatible agent",
+    ],
+    visual: McpDiscoveryVisual,
   },
 
   // ─── SECTION III: AGENT PATTERNS ──────────────────────────────
@@ -438,7 +468,7 @@ agent.run("What's my favourite language?")
         label: "Clear all memories",
         demo: {
           type: "delete",
-          endpoint: "/api/memory",
+          endpoint: "/api/memory/default",
         },
       },
     ],
@@ -517,7 +547,7 @@ const response = await agent.run(userMessage);`,
     demoHint: "A finance question gets through. A cake recipe gets blocked.",
     demo: {
       type: "sse",
-      endpoint: "/api/agents/guardrails/stream",
+      endpoint: "/api/agents/guardrails?format=sse",
       systemPrompt:
         "Phase 1: Classify whether the query is a personal finance question.\nPhase 2: If allowed, stream finance advice.",
       body: {
@@ -565,7 +595,7 @@ if (decision.approved) await execute(proposal)`,
     demoHint: "The agent proposes sending an email — you decide if it happens",
     demo: {
       type: "multi-step",
-      proposeEndpoint: "/api/agents/human-in-loop/stream",
+      proposeEndpoint: "/api/agents/human-in-loop?format=sse",
       systemPrompt:
         "You are an agent that proposes actions for human approval before executing them.\n\nYou MUST ALWAYS use one of the available tools to propose an action. NEVER describe the action in text only.\n\nAvailable tools:\n- sendEmail: Propose sending an email\n- deleteData: Propose deleting data\n- publishContent: Propose publishing content\n\nYou MUST call the appropriate tool. The action will be queued for human review.",
       proposeBody: {
@@ -585,31 +615,20 @@ if (decision.approved) await execute(proposal)`,
     category: "Agent Patterns",
     section: "III. Agent Patterns",
     bullets: [
-      "LLM calls fail: rate limits, timeouts, malformed responses — handle them gracefully",
-      "Retry with backoff, fall back to cheaper models, and set hard limits on agent loops",
+      "LLM calls fail — rate limits, timeouts, bad responses",
+      "Retry with exponential backoff",
+      "Fall back to cheaper models when retries are exhausted",
     ],
-    code: `async function callWithRetry(prompt, options = {}) {
-  const { maxRetries = 3, fallbackModel } = options;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await generateText({
-        model: getModel(),
-        prompt,
-      });
-    } catch (err) {
-      if (attempt === maxRetries && fallbackModel) {
-        return await generateText({
-          model: getModel(fallbackModel),
-          prompt,
-        });
-      }
-      // Exponential backoff: 1s, 2s, 4s...
-      await sleep(1000 * Math.pow(2, attempt - 1));
-    }
+    codeMaxWidth: "50%",
+    code: `for (let attempt = 1; attempt <= 3; attempt++) {
+  try {
+    return await generateText({ model, prompt });
+  } catch (err) {
+    await sleep(1000 * 2 ** attempt); // backoff: 2s, 4s, 8s
   }
-  throw new Error("All retries exhausted");
-}`,
+}
+// All retries failed — try a cheaper fallback model
+return await generateText({ model: fallback, prompt });`,
   },
 
   // ─── SECTION IV: ORCHESTRATION ────────────────────────────────
@@ -622,7 +641,9 @@ if (decision.approved) await execute(proposal)`,
     layout: "section-intro",
     bullets: [
       "Supervisor Agent",
+      "Skills",
       "Parallel Tasks",
+      "Workflows",
       "Why Custom Agents?",
     ],
   },
@@ -662,6 +683,108 @@ agent.run("Weather in London and top news today?")
   },
 
   {
+    id: 31,
+    title: "Skills",
+    subtitle: "Behavioral overlays that change how agents respond",
+    icon: FiFeather,
+    category: "Orchestration",
+    section: "IV. Orchestration",
+    bullets: [
+      "Skills are markdown documents that modify HOW an agent approaches a task — not what it knows",
+      "The supervisor auto-detects relevant skills and injects them into specialist agents",
+    ],
+    code: `// Supervisor sees the query and picks skills:
+"Explain quantum computing like I'm five"
+→ supervisor selects skill: "eli5"
+→ routes to knowledge agent with skill attached
+
+// The specialist agent's prompt gets augmented:
+systemPrompt += \`
+# Active Skills
+### eli5
+1. Use everyday analogies
+2. Avoid jargon completely
+3. Start with the big picture
+\`
+
+// Same agent, different behavior — no code changes`,
+    demoButtons: [
+      {
+        label: "With skill — \"Explain simply\" triggers eli5",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor auto-detects the eli5 skill based on the user's phrasing and injects it into the specialist agent's prompt.",
+          body: {
+            message: "Explain how the internet works in simple terms, like I'm five",
+          },
+        },
+      },
+      {
+        label: "With skill — concise weather via TLDR",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects concise-summarizer skill from \"brief summary\" phrasing and injects it into the weather agent — same skill, different domain.",
+          body: {
+            message: "Brief summary of the weather in Tokyo and San Francisco — just the key points",
+          },
+        },
+      },
+      {
+        label: "Multi-skill — eli5 + step-by-step reasoning",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects both eli5 and step-by-step-reasoning skills. eli5 [response] applies at synthesis, step-by-step-reasoning [response] applies at synthesis too.",
+          body: {
+            message: "Explain step by step how weather forecasting works, like I'm five",
+          },
+        },
+      },
+      {
+        label: "Tone — sarcastic weather report",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects tone-sarcastic skill from the user's request for snark. The tone skill [response] applies at synthesis, delivering weather facts with dry wit.",
+          body: {
+            message: "Give me the weather in London, but make it sarcastic",
+          },
+        },
+      },
+      {
+        label: "Query skill — fact-check a claim",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects fact-check skill. This is a query-phase skill [query] — it changes how the specialist agent gathers information, making it verify claims and look for counter-evidence.",
+          body: {
+            message: "Fact check this: the Great Wall of China is visible from space",
+          },
+        },
+      },
+      {
+        label: "Tone — disagreeable movie recommendation",
+        demo: {
+          type: "sse",
+          endpoint: "/api/agents/supervisor",
+          systemPrompt:
+            "Supervisor detects tone-disagreeable skill. The tone [response] applies at synthesis — the agent gives a real recommendation but challenges the user's assumptions along the way.",
+          body: {
+            message: "Recommend me a good movie, but be disagreeable about it",
+          },
+        },
+      },
+    ],
+  },
+
+  {
     id: 13,
     title: "Parallel Tasks",
     subtitle: "Why wait in line when you can fan out?",
@@ -684,14 +807,28 @@ const [weather, news, movie] = await Promise.all([
     demoHint: "Weather, news, and movies fetched simultaneously",
     demo: {
       type: "sse",
-      endpoint: "/api/agents/task",
+      endpoint: "/api/agents/supervisor",
       systemPrompt:
-        "You are a task delegation agent that breaks complex queries into parallel sub-tasks.\n\nWhen you receive a complex query:\n1. Analyze what information is needed\n2. Create individual tasks using the createTask tool for each distinct sub-query\n3. Tasks will be executed in parallel for efficiency\n\nAvailable agents: weather, hackernews, knowledge. Create one task per distinct information need.",
+        "You are a supervisor agent that routes user queries to the appropriate specialist agent.\n\nFor complex, multi-domain queries: use createTask for each sub-task (they will run in parallel).\n\nAvailable agents: weather, hackernews, knowledge. Create one task per distinct information need.",
       body: {
         message:
           "I need three things: the weather in Paris, the top Hacker News story, and a good sci-fi movie recommendation.",
+        planMode: true,
       },
     },
+  },
+
+  {
+    id: 19,
+    title: "Workflows",
+    subtitle: "Simple blocks, powerful compositions",
+    icon: FiGitMerge,
+    category: "Orchestration",
+    section: "IV. Orchestration",
+    bullets: [
+      "An agent is one step. A workflow chains agents with logic.",
+    ],
+    visual: WorkflowPipelineVisual,
   },
 
   {
@@ -722,7 +859,8 @@ const [weather, news, movie] = await Promise.all([
       "Sandboxes",
       "Observability & Cost",
       "Choosing the Right Model",
-      "MCP & Workflows",
+      "Evaluation & Feedback",
+      "Deployment & Scaling",
     ],
   },
 
@@ -862,30 +1000,137 @@ agent.run("Find the first 15 Fibonacci primes")
   },
 
   {
-    id: 18,
-    title: "MCP",
-    subtitle: "USB-C for AI tools",
-    icon: FiLink,
+    id: 37,
+    title: "Evaluation & Feedback",
+    subtitle: "How do you know your agent is any good?",
+    icon: FiThumbsUp,
     category: "Production",
     section: "V. Production Concerns",
     bullets: [
-      "A standard for AI to discover and use tools — no hardcoding",
-      "Any MCP-compatible tool works with any MCP-compatible agent",
+      "Without evaluation, you're flying blind -- every prompt change is a guess",
+      "Build a loop: test against known inputs, measure quality, collect user feedback, iterate",
     ],
-    visual: McpDiscoveryVisual,
+    visual: EvaluationFeedbackVisual,
   },
 
   {
-    id: 19,
-    title: "Workflows",
-    subtitle: "Simple blocks, powerful compositions",
-    icon: FiGitMerge,
+    id: 38,
+    title: "Deployment & Scaling",
+    subtitle: "Where does your agent actually run?",
+    icon: FiServer,
     category: "Production",
     section: "V. Production Concerns",
     bullets: [
-      "An agent is one step. A workflow chains agents with logic.",
+      "The right deployment target depends on latency, cost, privacy, and traffic patterns",
+      "Most teams start cloud-hosted, then optimize edge or self-hosted for specific needs",
     ],
-    visual: WorkflowPipelineVisual,
+    visual: DeploymentScalingVisual,
+  },
+
+  // ─── SECTION VI: BEYOND THE AGENT ────────────────────────────
+  {
+    id: 33,
+    title: "Beyond the Agent",
+    subtitle: "User interfaces, voice, and the bigger picture",
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    layout: "section-intro",
+    bullets: [
+      "Thinking Beyond the Agent",
+      "A2UI: Agent-to-User Interface",
+      "Conversation: Multi-Turn Chat",
+      "Voice: A Natural Interface",
+      "Daily Driver",
+    ],
+  },
+
+  {
+    id: 36,
+    title: "Thinking Beyond the Agent",
+    subtitle: "Start with your problems, not the technology",
+    icon: FiCompass,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [],
+    visual: ThinkingBeyondVisual,
+  },
+
+  {
+    id: 32,
+    title: "A2UI: Agent-to-User Interface",
+    subtitle: "From JSON to native components",
+    icon: FiMonitor,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [
+      "Agents return structured data, not HTML or markdown",
+      "Clients render native UI components from that data",
+      "A2UI is a declarative protocol — no executable code crosses the trust boundary",
+      "Same agent response renders on web, mobile, or desktop",
+    ],
+    visual: A2UIVisual,
+    demoHint: "The web-search agent finds a restaurant and the terminal renders a rich card",
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/web-search",
+      systemPrompt:
+        "You are a web search specialist. Search for the requested item, then use getPageMeta to retrieve OpenGraph metadata for a rich preview card.",
+      body: {
+        message:
+          "Find a popular Thai restaurant in Austin TX. Search for one, pick the best result, and get a preview card for it using getPageMeta.",
+      },
+    },
+  },
+
+  {
+    id: 34,
+    title: "Voice: A Natural Interface",
+    subtitle: "Talk to your agent like you talk to a colleague",
+    icon: FiMic,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [
+      "Voice removes the keyboard barrier -- speak naturally, get structured results",
+      "The pipeline: record audio, transcribe to text, route through the supervisor",
+      "Same agent infrastructure, different input modality -- no agent changes needed",
+    ],
+    visual: VoiceVisual,
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/supervisor",
+      body: { message: "(voice)" },
+    },
+  },
+
+  {
+    id: 39,
+    title: "Conversation: Multi-Turn Chat",
+    subtitle: "The most natural agent interface",
+    icon: FiMessageSquare,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    bullets: [
+      "Multi-turn context: the agent remembers what was said earlier in the thread",
+      "Streaming into a thread shows thinking in real time -- tool calls, reasoning, responses",
+      "Same agent infrastructure, different presentation -- chat is just another client",
+    ],
+    rightPanel: ChatWindowVisual,
+  },
+
+  {
+    id: 35,
+    title: "Daily Driver",
+    subtitle: "Managing work through conversation",
+    icon: FiCheckSquare,
+    category: "Beyond the Agent",
+    section: "VI. Beyond the Agent",
+    visual: KanbanVisual,
+    bullets: [],
+    demo: {
+      type: "sse",
+      endpoint: "/api/agents/taskboard",
+      body: { message: "(voice)" },
+    },
   },
 
   // ─── CONCLUSION ────────────────────────────────────────────────
@@ -900,7 +1145,8 @@ agent.run("Find the first 15 Fibonacci primes")
       "An LLM is just a prediction engine — tools turn it into an agent",
       "Patterns like memory, guardrails, and retries make agents reliable",
       "Orchestration lets multiple agents collaborate and parallelize",
-      "Production demands auth, injection defense, cost tracking, and observability",
+      "Production demands auth, injection defense, cost tracking, evaluation, and smart deployment",
+      "MCP standardizes tool discovery; conversation, voice, and A2UI extend the interface",
       "Start simple, measure everything, add complexity only when you need it",
     ],
   },

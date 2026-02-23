@@ -7,11 +7,18 @@ import generateRoutes from "./routes/generate/generate.routes.js";
 import toolsRoutes from "./routes/tools/tools.routes.js";
 import agentsRoutes from "./routes/agents/agents.routes.js";
 import memoryRoutes from "./routes/memory/memory.routes.js";
+import skillsRoutes from "./routes/skills/skills.routes.js";
+import voiceRoutes from "./routes/voice/voice.routes.js";
+import conversationsRoutes from "./routes/conversations/conversations.routes.js";
 import { createWebSocketHandler } from "./routes/ws/ws.route.js";
+import { initializeRegistry } from "./registry/init.js";
 
 const app = createApp();
 
 configureOpenAPI(app);
+
+// Initialize registries (imports all agents/tools, loads prompt overrides)
+await initializeRegistry();
 
 // Health check (no auth)
 app.route("/health", indexRoute);
@@ -24,6 +31,9 @@ app.route("/api/generate", generateRoutes);
 app.route("/api/tools", toolsRoutes);
 app.route("/api/agents", agentsRoutes);
 app.route("/api/memory", memoryRoutes);
+app.route("/api/skills", skillsRoutes);
+app.route("/api/voice", voiceRoutes);
+app.route("/api/conversations", conversationsRoutes);
 
 // In production, serve the built client as static files
 if (process.env.NODE_ENV === "production") {

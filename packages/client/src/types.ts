@@ -12,7 +12,8 @@ export type TerminalLineType =
   | "success"
   | "warning"
   | "system-prompt"
-  | "user-prompt";
+  | "user-prompt"
+  | "og-card";
 
 export interface TerminalLine {
   id: string;
@@ -44,6 +45,8 @@ export interface SseDemoConfig {
   endpoint: string;
   body: Record<string, unknown>;
   systemPrompt?: string;
+  /** When true, don't clear the terminal between runs — keeps conversation visible */
+  keepHistory?: boolean;
   /** Sequential SSE steps — each opens a separate stream */
   steps?: Array<{
     label: string;
@@ -82,6 +85,17 @@ export interface SimulateStreamDemoConfig {
 
 export type DemoConfig = JsonDemoConfig | SseDemoConfig | MultiStepDemoConfig | DeleteDemoConfig | SimulateStreamDemoConfig;
 
+export interface VisualProps {
+  onRun?: (demo?: DemoConfig) => void;
+  isRunning?: boolean;
+  /** Concatenated text lines from the most recent agent response */
+  lastResponseText?: string;
+  /** Add a line to the terminal output */
+  onAddLine?: (type: TerminalLineType, content: string) => void;
+  /** Clear the terminal output */
+  onClear?: () => void;
+}
+
 export interface SlideConfig {
   id: number;
   title: string;
@@ -101,6 +115,10 @@ export interface SlideConfig {
   codeLabel?: string;
   /** Optional code snippet to display */
   code?: string;
+  /** Optional max-width for the code block (e.g. "66%", "600px") */
+  codeMaxWidth?: string;
   /** Optional demo configuration - slides without this hide the terminal */
   demo?: DemoConfig;
+  /** Optional component to render in the right panel instead of the terminal */
+  rightPanel?: Component;
 }

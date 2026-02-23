@@ -1,132 +1,89 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { createRouter } from "../../app.js";
-import {
-  weatherRequestSchema,
-  hackernewsRequestSchema,
-  movieSearchRequestSchema,
-} from "./tools.schemas.js";
-import * as handlers from "./tools.handlers.js";
+import { toolRegistry } from "../../registry/tool-registry.js";
 
 const router = createRouter();
 
-// POST /weather
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/weather",
-    tags: ["Tools"],
-    summary: "Get weather data for a location",
-    request: {
-      body: {
-        content: {
-          "application/json": { schema: weatherRequestSchema },
-        },
-      },
-    },
-    responses: {
-      200: {
-        description: "Weather data",
-        content: { "application/json": { schema: z.any() } },
-      },
-    },
-  }),
-  handlers.handleWeather
-);
-
-// POST /hackernews
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/hackernews",
-    tags: ["Tools"],
-    summary: "Get top Hacker News stories",
-    request: {
-      body: {
-        content: {
-          "application/json": { schema: hackernewsRequestSchema },
-        },
-      },
-    },
-    responses: {
-      200: {
-        description: "Top stories list",
-        content: { "application/json": { schema: z.any() } },
-      },
-    },
-  }),
-  handlers.handleHackernews
-);
-
-// GET /hackernews/:storyId
+// GET / — List all registered tools
 router.openapi(
   createRoute({
     method: "get",
-    path: "/hackernews/{storyId}",
+    path: "/",
     tags: ["Tools"],
-    summary: "Get Hacker News story details",
-    request: {
-      params: z.object({ storyId: z.string().openapi({ example: "12345" }) }),
-    },
+    summary: "List all registered tools",
+    description: "Returns metadata for all registered tools including descriptions and input schemas",
     responses: {
       200: {
-        description: "Story details",
-        content: { "application/json": { schema: z.any() } },
-      },
-      400: {
-        description: "Invalid story ID",
-        content: { "application/json": { schema: z.object({ error: z.string() }) } },
-      },
-    },
-  }),
-  handlers.handleHackernewsStory
-);
-
-// POST /movies/search
-router.openapi(
-  createRoute({
-    method: "post",
-    path: "/movies/search",
-    tags: ["Tools"],
-    summary: "Search for movies",
-    request: {
-      body: {
+        description: "List of tools",
         content: {
-          "application/json": { schema: movieSearchRequestSchema },
+          "application/json": {
+            schema: z.object({
+              tools: z.array(
+                z.object({
+                  name: z.string(),
+                  description: z.string(),
+                  category: z.string().optional(),
+                  inputSchema: z.any(),
+                }),
+              ),
+              count: z.number(),
+            }),
+          },
         },
       },
     },
-    responses: {
-      200: {
-        description: "Movie search results",
-        content: { "application/json": { schema: z.any() } },
-      },
-    },
   }),
-  handlers.handleMovieSearch
+  (c) => {
+    const tools = toolRegistry.list().map((t) => ({
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      inputSchema: t.inputSchema,
+    }));
+    return c.json({ tools, count: tools.length });
+  },
 );
 
-// GET /movies/:movieId
+// POST /:toolName — Execute a tool by name
 router.openapi(
   createRoute({
-    method: "get",
-    path: "/movies/{movieId}",
+    method: "post",
+    path: "/{toolName}",
     tags: ["Tools"],
-    summary: "Get movie details",
+    summary: "Execute a tool by name",
+    description: "Runs the named tool with the provided input",
     request: {
-      params: z.object({ movieId: z.string().openapi({ example: "550" }) }),
+      params: z.object({
+        toolName: z.string().openapi({ example: "getWeather" }),
+      }),
+      body: {
+        content: { "application/json": { schema: z.any() } },
+      },
     },
     responses: {
       200: {
-        description: "Movie details",
+        description: "Tool execution result",
         content: { "application/json": { schema: z.any() } },
       },
-      400: {
-        description: "Invalid movie ID",
-        content: { "application/json": { schema: z.object({ error: z.string() }) } },
+      404: {
+        description: "Tool not found",
+        content: {
+          "application/json": { schema: z.object({ error: z.string() }) },
+        },
       },
     },
   }),
-  handlers.handleMovieDetail
+  async (c) => {
+    const name = c.req.param("toolName");
+    const tool = toolRegistry.get(name);
+    if (!tool) {
+      return c.json({ error: `Tool not found: ${name}` }, 404);
+    }
+
+    const input = await c.req.json();
+    const result = await toolRegistry.execute(name, input);
+    return c.json(result, 200);
+  },
 );
 
 export default router;

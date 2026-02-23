@@ -1,6 +1,6 @@
 import { type Component, For, Show, createComponent } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import type { SlideConfig, DemoConfig } from "../types";
+import type { SlideConfig, DemoConfig, TerminalLineType } from "../types";
 import {
   badgeClass,
   sectionAccentColor,
@@ -9,13 +9,16 @@ import {
   sectionColors,
 } from "../lib/section-colors";
 import CodeBlock from "./CodeBlock";
-import { FiChevronRight } from "solid-icons/fi";
+import { FiChevronRight, FiPlay } from "solid-icons/fi";
 
 interface Props {
   slide: SlideConfig;
   fullWidth: boolean;
   onRun?: (demo?: DemoConfig) => void;
   isRunning?: boolean;
+  lastResponseText?: string;
+  onAddLine?: (type: TerminalLineType, content: string) => void;
+  onClear?: () => void;
 }
 
 /* ─── Section Intro Layout ──────────────────────────────────────── */
@@ -164,7 +167,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
         <div
           class="mb-8 h-1 w-32 rounded-full"
           style={{
-            background: "linear-gradient(90deg, #34d8cc 0%, #38bdf8 25%, #a78bfa 50%, #fbbf24 75%, #fb7185 100%)",
+            background: "linear-gradient(90deg, #34d8cc 0%, #38bdf8 20%, #a78bfa 40%, #fbbf24 60%, #fb7185 80%, #f97316 100%)",
           }}
         />
 
@@ -202,7 +205,7 @@ const IntroContent: Component<{ slide: SlideConfig }> = (props) => {
                         border: `1px solid ${color()}30`,
                       }}
                     >
-                      {["I", "II", "III", "IV", "V"][i()] ?? String(i() + 1)}
+                      {["I", "II", "III", "IV", "V", "VI"][i()] ?? String(i() + 1)}
                     </span>
                     <span class="font-mono text-[16px] font-medium text-primary">
                       {topic}
@@ -412,12 +415,15 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Custom visual — takes priority over code block */}
         <Show when={props.slide.visual}>
-          {createComponent(props.slide.visual!, {})}
+          {createComponent(props.slide.visual!, { onRun: props.onRun, isRunning: props.isRunning, lastResponseText: props.lastResponseText, onAddLine: props.onAddLine, onClear: props.onClear })}
         </Show>
 
         {/* Code snippet — only if no custom visual */}
         <Show when={props.slide.code && !props.slide.visual}>
-          <div class="w-full text-left">
+          <div
+            class="w-full text-left"
+            style={{ "max-width": props.slide.codeMaxWidth ?? "none", "margin-left": props.slide.codeMaxWidth ? "auto" : undefined, "margin-right": props.slide.codeMaxWidth ? "auto" : undefined }}
+          >
             <Show when={props.slide.codeLabel}>
               <p class="mb-2 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-secondary">
                 {props.slide.codeLabel}
@@ -429,16 +435,16 @@ const DefaultSlideContent: Component<Props> = (props) => {
 
         {/* Multiple demo buttons */}
         <Show when={props.slide.demoButtons?.length}>
-          <div class="mt-8 flex w-full gap-3">
+          <div class="mt-8 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <For each={props.slide.demoButtons}>
               {(btn) => (
                 <button
                   onClick={() => props.onRun?.(btn.demo)}
                   disabled={props.isRunning}
-                  class="demo-hint btn-glow flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                  class="demo-hint btn-glow flex cursor-pointer items-center gap-2.5 rounded-xl px-4 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <span class="text-accent">&#9654;</span>
-                  <span class="font-body text-sm text-accent-dim">{btn.label}</span>
+                  <span class="flex-shrink-0 text-accent"><FiPlay size={22} /></span>
+                  <span class="font-body text-left text-sm leading-snug text-accent-dim">{btn.label}</span>
                 </button>
               )}
             </For>
@@ -452,10 +458,10 @@ const DefaultSlideContent: Component<Props> = (props) => {
             disabled={props.isRunning}
             class="demo-hint btn-glow mt-8 inline-flex cursor-pointer items-center gap-3 rounded-xl px-5 py-3 transition-all disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <span class="text-lg text-accent">
-              {props.isRunning ? <span class="spinner inline-block" /> : <>&#9654;</>}
+            <span class="flex-shrink-0 text-accent">
+              {props.isRunning ? <span class="spinner inline-block" /> : <FiPlay size={22} />}
             </span>
-            <span class="font-body text-sm text-accent-dim">
+            <span class="font-body text-left text-sm leading-snug text-accent-dim">
               {props.isRunning ? "Running..." : `Watch: ${props.slide.demoHint}`}
             </span>
           </button>
