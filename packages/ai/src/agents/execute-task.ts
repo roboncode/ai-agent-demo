@@ -1,0 +1,143 @@
+import { tool } from "ai";
+import { z } from "zod";
+import type { UsageInfo } from "../lib/ai-provider.js";
+import { runAgent } from "../lib/run-agent.js";
+import {
+  getOrchestratorAgents,
+  delegationStore,
+  getEventBus,
+  type DelegationContext,
+} from "../lib/delegation-context.js";
+import { TOOL_NAMES } from "../lib/constants.js";
+import { BUS_EVENTS } from "../lib/events.js";
+import type { PluginContext } from "../context.js";
+
+const clarifyItemSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("question"), text: z.string(), context: z.string().optional() }),
+  z.object({ type: z.literal("option"), text: z.string(), choices: z.array(z.string()), context: z.string().optional() }),
+  z.object({ type: z.literal("confirmation"), text: z.string(), context: z.string().optional() }),
+  z.object({ type: z.literal("action"), text: z.string(), context: z.string().optional() }),
+  z.object({ type: z.literal("warning"), text: z.string(), context: z.string().optional() }),
+  z.object({ type: z.literal("info"), text: z.string() }),
+]);
+
+export type ClarifyItem = z.infer<typeof clarifyItemSchema>;
+
+const CLARIFY_TOOL = tool({
+  description:
+    "Use when you need information, confirmation, or approval from the user. " +
+    "Supports: question (free text), option (pick from choices), " +
+    "confirmation (yes/no), action (declare intent), warning (risk), info (status update). " +
+    "Only use when you genuinely cannot proceed without user interaction.",
+  inputSchema: z.object({ items: z.array(clarifyItemSchema) }),
+});
+
+const CLARIFY_PROMPT_SUFFIX =
+  "\n\nIMPORTANT: If the user's query is vague or lacks specifics needed to give a good answer, " +
+  "you MUST use the _clarify tool to ask for more information. Do NOT guess, do NOT ask in plain text, " +
+  "and do NOT proceed without the needed details. Call _clarify with items like: " +
+  '{items: [{type: "question", text: "Your question here", context: "Why you need this"}]}.';
+
+export interface TaskResult {
+  agent: string;
+  query: string;
+  result: {
+    response: string;
+    items?: ClarifyItem[];
+    toolsUsed: string[];
+    usage?: UsageInfo;
+  };
+  responseSkills?: string[];
+}
+
+function errorResult(agent: string, query: string, message: string): TaskResult {
+  return { agent, query, result: { response: message, toolsUsed: [] } };
+}
+
+export async function executeTask(
+  ctx: PluginContext,
+  agent: string,
+  query: string,
+  skills?: string[],
+): Promise<TaskResult> {
+  const registration = ctx.agents.get(agent);
+  if (!registration) return errorResult(agent, query, `Unknown agent: ${agent}`);
+
+  if (getOrchestratorAgents(ctx.agents).has(agent)) {
+    return errorResult(agent, query, `Agent "${agent}" is an orchestrator and cannot be delegated to`);
+  }
+
+  if (!registration.tools || Object.keys(registration.tools).length === 0) {
+    return errorResult(agent, query, `Agent "${agent}" does not support task execution`);
+  }
+
+  const parentCtx = delegationStore.getStore();
+  const chain = parentCtx?.chain ?? [];
+  const depth = parentCtx?.depth ?? 0;
+
+  if (depth >= ctx.maxDelegationDepth) {
+    return errorResult(agent, query, `Delegation depth limit (${ctx.maxDelegationDepth}) exceeded. Chain: ${chain.join(" → ")} → ${agent}`);
+  }
+
+  if (chain.length > 0 && chain[chain.length - 1] === agent) {
+    return errorResult(agent, query, `Self-delegation blocked: "${agent}" cannot delegate to itself`);
+  }
+
+  if (chain.includes(agent)) {
+    return errorResult(agent, query, `Circular delegation blocked: ${chain.join(" → ")} → ${agent}`);
+  }
+
+  const bus = getEventBus();
+  const orchestrators = getOrchestratorAgents(ctx.agents);
+  const from = chain.length > 0 ? chain[chain.length - 1] : (orchestrators.values().next().value ?? agent);
+
+  let systemPrompt = ctx.agents.getResolvedPrompt(agent)!;
+  const querySkillNames: string[] = [];
+  const responseSkillNames: string[] = [];
+
+  if (skills && skills.length > 0) {
+    const skillSections: string[] = [];
+    for (const skillName of skills) {
+      const skill = await ctx.storage.skills.getSkill(skillName);
+      if (!skill) continue;
+      if (skill.phase === "query" || skill.phase === "both") {
+        skillSections.push(`### ${skill.name}\n${skill.content}`);
+        querySkillNames.push(skill.name);
+      }
+      if (skill.phase === "response" || skill.phase === "both") {
+        responseSkillNames.push(skill.name);
+      }
+    }
+    if (skillSections.length > 0) {
+      systemPrompt += `\n\n# Active Skills\nApply the following behavioral instructions to your response:\n\n${skillSections.join("\n\n")}`;
+    }
+  }
+
+  if (querySkillNames.length > 0) {
+    bus?.emit(BUS_EVENTS.SKILL_INJECT, { agent, skills: querySkillNames, phase: "query" });
+  }
+  bus?.emit(BUS_EVENTS.DELEGATE_START, { from, to: agent, query });
+
+  const childCtx: DelegationContext = {
+    chain: [...chain, agent],
+    depth: depth + 1,
+    events: parentCtx?.events,
+    abortSignal: parentCtx?.abortSignal,
+  };
+
+  const augmentedTools = { ...registration.tools!, [TOOL_NAMES.CLARIFY]: CLARIFY_TOOL };
+  const augmentedSystem = systemPrompt + CLARIFY_PROMPT_SUFFIX;
+
+  const result = await delegationStore.run(childCtx, () =>
+    runAgent(ctx, { system: augmentedSystem, tools: augmentedTools }, query)
+  );
+
+  bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, 200) });
+
+  return {
+    agent,
+    query,
+    result,
+    ...(responseSkillNames.length > 0 && { responseSkills: responseSkillNames }),
+  };
+}

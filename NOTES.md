@@ -1,11 +1,12 @@
 multi-modal
 evals
 self-improving agents
+notifications
 a/b testing
+skills 2.0
 [X] voice
 [X] web search
 [X] skillz
-notifications
 
 utility 
 
