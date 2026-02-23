@@ -5,6 +5,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages/server/package.json packages/server/package.json
 COPY packages/client/package.json packages/client/package.json
+COPY packages/voice-client/package.json packages/voice-client/package.json
 
 RUN bun install --frozen-lockfile
 
@@ -25,6 +26,7 @@ ENV NODE_ENV=production
 COPY package.json bun.lock ./
 COPY packages/server/package.json packages/server/package.json
 COPY packages/client/package.json packages/client/package.json
+COPY packages/voice-client/package.json packages/voice-client/package.json
 
 RUN bun install --frozen-lockfile --production
 
