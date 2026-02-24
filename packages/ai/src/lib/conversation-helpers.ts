@@ -1,4 +1,6 @@
 import { needsCompaction, compactConversation } from "./compaction.js";
+import { emitStatus } from "./emit-status.js";
+import { STATUS_CODES } from "./events.js";
 import type { PluginContext } from "../context.js";
 
 /**
@@ -14,6 +16,7 @@ export async function loadConversationWithCompaction(
   conversationId: string,
   newUserMessage: string,
 ): Promise<Array<{ role: "user" | "assistant"; content: string }> | undefined> {
+  emitStatus({ code: STATUS_CODES.LOADING_CONTEXT, message: "Loading conversation history", metadata: { conversationId } });
   let conv = await ctx.storage.conversations.get(conversationId);
   if (!conv) return undefined;
 

@@ -4,7 +4,7 @@ import { streamText, stepCountIs } from "ai";
 import { extractStreamUsage } from "./ai-provider.js";
 import { getEventBus, getAbortSignal } from "./delegation-context.js";
 import { registerRequest, unregisterRequest } from "./request-registry.js";
-import { SSE_EVENTS, BUS_EVENTS } from "./events.js";
+import { SSE_EVENTS, BUS_EVENTS, STATUS_CODES } from "./events.js";
 import type { PluginContext } from "../context.js";
 
 interface AgentStreamConfig {
@@ -49,6 +49,12 @@ export function streamAgentResponse(c: Context, ctx: PluginContext, config: Agen
       id: String(id++),
       event: SSE_EVENTS.SESSION_START,
       data: JSON.stringify({ conversationId: config.conversationId }),
+    });
+
+    await stream.writeSSE({
+      id: String(id++),
+      event: SSE_EVENTS.STATUS,
+      data: JSON.stringify({ code: STATUS_CODES.PROCESSING, message: "Agent starting work", agent: config.agentName }),
     });
 
     try {

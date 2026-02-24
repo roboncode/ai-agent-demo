@@ -14,6 +14,7 @@ export const SSE_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END: "delegate:end",
   SKILL_INJECT: "skill:inject",
+  STATUS: "status",
   ERROR: "error",
 } as const;
 
@@ -27,6 +28,7 @@ export const BUS_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END: "delegate:end",
   SKILL_INJECT: "skill:inject",
+  STATUS: "status",
 } as const;
 
 export type BusEventName = (typeof BUS_EVENTS)[keyof typeof BUS_EVENTS];
@@ -38,7 +40,24 @@ export const BUS_TO_SSE_MAP: Record<string, string> = {
   [BUS_EVENTS.TOOL_CALL]: SSE_EVENTS.TOOL_CALL,
   [BUS_EVENTS.TOOL_RESULT]: SSE_EVENTS.TOOL_RESULT,
   [BUS_EVENTS.SKILL_INJECT]: SSE_EVENTS.SKILL_INJECT,
+  [BUS_EVENTS.STATUS]: SSE_EVENTS.STATUS,
 };
 
 /** Set of bus event names that are forwarded to SSE clients */
 export const FORWARDED_BUS_EVENTS = new Set(Object.keys(BUS_TO_SSE_MAP));
+
+/** Typed status codes for the `status` event */
+export const STATUS_CODES = {
+  THINKING: "thinking",
+  PLANNING: "planning",
+  EXECUTING_TASKS: "executing-tasks",
+  SYNTHESIZING: "synthesizing",
+  COMPACTING: "compacting",
+  RETRYING: "retrying",
+  FALLBACK: "fallback",
+  GUARD_CHECK: "guard-check",
+  LOADING_CONTEXT: "loading-context",
+  PROCESSING: "processing",
+} as const;
+
+export type StatusCode = (typeof STATUS_CODES)[keyof typeof STATUS_CODES];

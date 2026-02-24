@@ -1,5 +1,4 @@
 multi-modal
-evals
 self-improving agents
 notifications
 a/b testing
@@ -7,6 +6,12 @@ skills 2.0
 [X] voice
 [X] web search
 [X] skillz
+
+common/default agents
+common/default skills
+common/default tools
+evals
+tools 2.0 generating code and executing - https://www.anthropic.com/engineering/advanced-tool-use
 
 utility 
 
@@ -16,6 +21,8 @@ utility
   ◻ Present design
   ◻ Write design doc
   ◻ Transition to implementation
+
+events: thinking, planning, error, compacting, processing, any other things that are common you can think of. 
 
 
 Will the client be informed about plan modes and what's happening, similar to what Claude Code does? Will the client be able to receive that as SSE events? Or do we need some kind of event system where the agents can dispatch out events when they're doing different things like agent-plan, agent-action, agent-thought, tool-execution-start, tool-execution-end, agent-execution-start, agent-execution-end etc.? I'm not sure what kind of names we want to have but that's what I was wondering. And I don't even know what kind of events would be useful. The reason why I was bringing that up is it would allow something like a supervisor to just register to those events through maybe some form of session for that particular call to the Agent api. That way it could convey that back to the client without having to do this comp flex returning events through event pattern. it could be flatter. Just my thoughts. 

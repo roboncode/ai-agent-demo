@@ -18,8 +18,12 @@ export { AgentEventBus } from "./lib/agent-events.js";
 export type { AgentEvent } from "./lib/agent-events.js";
 
 // ── Event & tool constants ──
-export { SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS } from "./lib/events.js";
-export type { SseEventName, BusEventName } from "./lib/events.js";
+export { SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS, STATUS_CODES } from "./lib/events.js";
+export type { SseEventName, BusEventName, StatusCode } from "./lib/events.js";
+
+// ── Status helpers ──
+export { emitStatus, writeStatus } from "./lib/emit-status.js";
+export type { StatusPayload } from "./lib/emit-status.js";
 export { TOOL_NAMES, DEFAULTS } from "./lib/constants.js";
 
 // ── Card registry ──

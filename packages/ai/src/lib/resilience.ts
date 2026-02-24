@@ -1,4 +1,6 @@
 import type { PluginContext } from "../context.js";
+import { emitStatus } from "./emit-status.js";
+import { STATUS_CODES } from "./events.js";
 
 interface ResilienceOptions<T> {
   /** The LLM call to wrap. Receives an optional override model ID. */
@@ -131,12 +133,14 @@ export async function withResilience<T>(opts: ResilienceOptions<T>): Promise<T> 
       }
 
       const delay = computeDelay(attempt, baseDelayMs, maxDelayMs, jitterFactor);
+      emitStatus({ code: STATUS_CODES.RETRYING, message: `Retrying (attempt ${attempt + 1}/${maxRetries})`, agent, metadata: { attempt: attempt + 1, maxRetries, delay } });
       await sleep(delay, abortSignal);
     }
   }
 
   // Retries exhausted — try fallback
   if (onFallback && lastError) {
+    emitStatus({ code: STATUS_CODES.FALLBACK, message: "Switching to fallback model", agent, metadata: { currentModel: modelId ?? "default" } });
     const fallbackModel = await onFallback({
       agent,
       currentModel: modelId ?? "default",

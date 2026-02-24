@@ -3,7 +3,7 @@
  * Run with: bun test packages/ai/test/smoke.test.ts
  */
 import { describe, test, expect } from "bun:test";
-import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, TOOL_NAMES, DEFAULTS, CardRegistry, DEFAULT_ORCHESTRATOR_PROMPT, createInMemoryMemoryStore, buildToolDescription, isRetryableError, withResilience, needsCompaction } from "../src/index.js";
+import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS, STATUS_CODES, TOOL_NAMES, DEFAULTS, CardRegistry, DEFAULT_ORCHESTRATOR_PROMPT, createInMemoryMemoryStore, buildToolDescription, isRetryableError, withResilience, needsCompaction } from "../src/index.js";
 import type { Conversation } from "../src/index.js";
 import { Hono } from "hono";
 import { tool } from "ai";
@@ -418,6 +418,27 @@ describe("@jombee/ai smoke test", () => {
     expect(SSE_EVENTS.ERROR).toBe("error");
     expect(DEFAULTS.COMPACTION_THRESHOLD).toBe(20);
     expect(DEFAULTS.COMPACTION_PRESERVE_RECENT).toBe(4);
+  });
+
+  test("STATUS_CODES exports all 10 status codes", () => {
+    expect(STATUS_CODES.THINKING).toBe("thinking");
+    expect(STATUS_CODES.PLANNING).toBe("planning");
+    expect(STATUS_CODES.EXECUTING_TASKS).toBe("executing-tasks");
+    expect(STATUS_CODES.SYNTHESIZING).toBe("synthesizing");
+    expect(STATUS_CODES.COMPACTING).toBe("compacting");
+    expect(STATUS_CODES.RETRYING).toBe("retrying");
+    expect(STATUS_CODES.FALLBACK).toBe("fallback");
+    expect(STATUS_CODES.GUARD_CHECK).toBe("guard-check");
+    expect(STATUS_CODES.LOADING_CONTEXT).toBe("loading-context");
+    expect(STATUS_CODES.PROCESSING).toBe("processing");
+    expect(Object.keys(STATUS_CODES)).toHaveLength(10);
+  });
+
+  test("status event is wired in SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS", () => {
+    expect(SSE_EVENTS.STATUS).toBe("status");
+    expect(BUS_EVENTS.STATUS).toBe("status");
+    expect(BUS_TO_SSE_MAP["status"]).toBe("status");
+    expect(FORWARDED_BUS_EVENTS.has("status")).toBe(true);
   });
 
   test("cleanup", async () => {

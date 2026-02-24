@@ -7,7 +7,8 @@ import { executeTask, type TaskResult } from "./execute-task.js";
 import { generateConversationId } from "../registry/handler-factories.js";
 import { getOrchestratorAgents, getEventBus, getAbortSignal, delegationStore } from "../lib/delegation-context.js";
 import { registerRequest, cancelRequest, unregisterRequest } from "../lib/request-registry.js";
-import { SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS } from "../lib/events.js";
+import { SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS, STATUS_CODES } from "../lib/events.js";
+import { writeStatus } from "../lib/emit-status.js";
 import { TOOL_NAMES, DEFAULTS } from "../lib/constants.js";
 import { withResilience } from "../lib/resilience.js";
 import { loadConversationWithCompaction } from "../lib/conversation-helpers.js";
@@ -129,6 +130,7 @@ async function synthesizeStreaming(opts: {
   const { ctx, model, sources, userMessage, skillNames, writer, agentName, abortSignal } = opts;
   const synthesisSystem = await buildSynthesisContext(ctx, skillNames);
   if (skillNames.length > 0) await writer.write(SSE_EVENTS.SKILL_INJECT, { agent: agentName, skills: skillNames, phase: "response" });
+  await writeStatus(writer, { code: STATUS_CODES.SYNTHESIZING, message: "Combining results", agent: agentName });
   await writer.write(SSE_EVENTS.AGENT_THINK, { text: DEFAULTS.SYNTHESIS_MESSAGE });
   const prompt = buildSynthesisPrompt(sources, userMessage);
   const synthesisStart = performance.now();
@@ -276,6 +278,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
         await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
         try {
           await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
+          await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing approved plan tasks", agent: agentName });
           const results = await executeTasksSettled(ctx, approvedPlan.map((task: any) => ({ agent: task.agent, query: task.query, skills: task.skills })));
           await writer.flush();
           const responseSkills = collectResponseSkills(results);
@@ -312,6 +315,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
       await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
       try {
         await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
+        await writeStatus(writer, { code: STATUS_CODES.THINKING, message: "Analyzing query and routing", agent: agentName });
         const planStart = performance.now();
         const planResult = await withResilience({
           fn: (overrideModel) => generateText({
@@ -349,12 +353,14 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
         const tasks = collectTasksFromSteps(planResult.steps);
 
         if (tasks.length > 0) {
+          await writeStatus(writer, { code: STATUS_CODES.PLANNING, message: "Building task plan", agent: agentName });
           await writer.write(SSE_EVENTS.AGENT_PLAN, { tasks });
           if (!autonomous) {
             await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
             await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.CREATE_TASK], conversationId: convId, awaitingApproval: true, tasks, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
             return;
           }
+          await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing parallel tasks", agent: agentName });
           const results = await executeTasksSettled(ctx, tasks);
           await writer.flush();
           const responseSkills = collectResponseSkills(results);

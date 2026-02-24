@@ -9,7 +9,8 @@ import {
   type DelegationContext,
 } from "../lib/delegation-context.js";
 import { TOOL_NAMES } from "../lib/constants.js";
-import { BUS_EVENTS } from "../lib/events.js";
+import { BUS_EVENTS, STATUS_CODES } from "../lib/events.js";
+import { emitStatus } from "../lib/emit-status.js";
 import type { PluginContext } from "../context.js";
 import { createMemoryTool, getDefaultMemoryStore } from "./memory-tool.js";
 
@@ -140,6 +141,7 @@ export async function executeTask(
 
   // Invoke guard if present
   if (registration.guard) {
+    emitStatus({ code: STATUS_CODES.GUARD_CHECK, message: "Running pre-execution guard", agent });
     const guardResult = await registration.guard(query, agent);
     if (!guardResult.allowed) {
       bus?.emit(BUS_EVENTS.DELEGATE_END, {
@@ -155,6 +157,7 @@ export async function executeTask(
   }
 
   try {
+    emitStatus({ code: STATUS_CODES.PROCESSING, message: "Agent starting work", agent });
     const result = await delegationStore.run(childCtx, () =>
       runAgent(ctx, { system: augmentedSystem, tools: augmentedTools, agentName: agent }, query)
     );

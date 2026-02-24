@@ -1,6 +1,8 @@
 import { generateText } from "ai";
 import { withResilience } from "./resilience.js";
 import { DEFAULTS } from "./constants.js";
+import { emitStatus } from "./emit-status.js";
+import { STATUS_CODES } from "./events.js";
 import type { PluginContext } from "../context.js";
 import type { Conversation, ConversationMessage } from "../storage/interfaces.js";
 
@@ -65,6 +67,8 @@ export async function compactConversation(
 
   const formatted = formatMessagesForSummary(toSummarize);
   const fullPrompt = `${prompt}\n\n---\n\n${formatted}`;
+
+  emitStatus({ code: STATUS_CODES.COMPACTING, message: "Compacting conversation history", metadata: { conversationId, summarizedCount: toSummarize.length, preservedCount: toPreserve.length } });
 
   const result = await withResilience({
     fn: (overrideModel) =>

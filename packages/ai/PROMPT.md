@@ -842,6 +842,7 @@ const SSE_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END:   "delegate:end",
   SKILL_INJECT:   "skill:inject",
+  STATUS:         "status",
   ERROR:          "error",
 };
 ```
@@ -856,6 +857,7 @@ const BUS_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END:   "delegate:end",
   SKILL_INJECT:   "skill:inject",
+  STATUS:         "status",
 };
 ```
 
@@ -871,7 +873,55 @@ const BUS_TO_SSE_MAP = {
   "tool:call":      "tool-call",
   "tool:result":    "tool-result",
   "skill:inject":   "skill:inject",
+  "status":         "status",
 };
+```
+
+### STATUS_CODES
+
+Typed status codes carried by `status` events. Clients listen for a single `status` SSE event and switch on `code`:
+
+```ts
+const STATUS_CODES = {
+  THINKING:        "thinking",        // Orchestrator analyzing/routing query
+  PLANNING:        "planning",        // Orchestrator building task plan
+  EXECUTING_TASKS: "executing-tasks", // Parallel tasks starting
+  SYNTHESIZING:    "synthesizing",    // Combining multi-agent results
+  COMPACTING:      "compacting",      // Conversation compaction in progress
+  RETRYING:        "retrying",        // LLM call retry in progress
+  FALLBACK:        "fallback",        // Switching to fallback model
+  GUARD_CHECK:     "guard-check",     // Running pre-execution guard
+  LOADING_CONTEXT: "loading-context", // Loading conversation history
+  PROCESSING:      "processing",      // Agent starting work
+};
+
+type StatusCode = (typeof STATUS_CODES)[keyof typeof STATUS_CODES];
+```
+
+### Status emission helpers
+
+Two helpers for emitting status events from different contexts:
+
+```ts
+import { emitStatus, writeStatus } from "@jombee/ai";
+import type { StatusPayload } from "@jombee/ai";
+
+// emitStatus — synchronous, emits on the internal bus (for sub-agents, resilience, compaction)
+emitStatus({ code: STATUS_CODES.PROCESSING, message: "Agent starting work", agent: "weather" });
+
+// writeStatus — async, writes directly to an SSE stream writer (for orchestrator top-level)
+await writeStatus(writer, { code: STATUS_CODES.THINKING, message: "Analyzing query", agent: "orchestrator" });
+```
+
+**StatusPayload shape:**
+
+```ts
+interface StatusPayload {
+  code: StatusCode;
+  message: string;
+  agent?: string;
+  metadata?: Record<string, unknown>;
+}
 ```
 
 ### AgentEventBus
@@ -914,6 +964,12 @@ data: {"conversationId":"conv_1234_abc"}
 event: agent:start
 data: {"agent":"orchestrator"}
 
+event: status
+data: {"code":"thinking","message":"Analyzing query and routing","agent":"orchestrator"}
+
+event: status
+data: {"code":"processing","message":"Agent starting work","agent":"weather"}
+
 event: delegate:start
 data: {"from":"orchestrator","to":"weather","query":"weather in NYC"}
 
@@ -925,6 +981,9 @@ data: {"toolName":"getWeather","result":{"temperature":72,"condition":"sunny"}}
 
 event: delegate:end
 data: {"from":"orchestrator","to":"weather","summary":"The weather in NYC is..."}
+
+event: status
+data: {"code":"synthesizing","message":"Combining results","agent":"orchestrator"}
 
 event: agent:think
 data: {"text":"Synthesizing results..."}
@@ -960,6 +1019,7 @@ data: {"toolsUsed":["routeToAgent","getWeather"],"conversationId":"conv_1234_abc
 | `delegate:start` | `{ from: string, to: string, query: string }` |
 | `delegate:end` | `{ from: string, to: string, summary: string }` |
 | `skill:inject` | `{ agent: string, skills: string[], phase: "query" \| "response" }` |
+| `status` | `{ code: StatusCode, message: string, agent?: string, metadata?: object }` |
 | `ask:user` | `{ items: ClarifyItem[] }` |
 | `done` | `{ toolsUsed: string[], conversationId: string, usage: UsageInfo, tasks?: TaskSummary[], awaitingApproval?: boolean, awaitingResponse?: boolean }` |
 | `error` | `{ conversationId: string, error: string }` |
@@ -1316,7 +1376,8 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 | Agent utilities | `createOrchestratorAgent`, `DEFAULT_ORCHESTRATOR_PROMPT`, `executeTask`, `AgentEventBus`, `runAgent`, `streamAgentResponse`, `createMemoryTool`, `getDefaultMemoryStore`, `setDefaultMemoryStore` |
 | Agent types | `OrchestratorAgentConfig`, `TaskResult`, `ClarifyItem`, `AgentEvent` |
 | Tool examples | `ToolExample`, `formatExamplesBlock`, `buildToolDescription` |
-| Constants | `SSE_EVENTS`, `BUS_EVENTS`, `BUS_TO_SSE_MAP`, `FORWARDED_BUS_EVENTS`, `TOOL_NAMES`, `DEFAULTS` |
+| Constants | `SSE_EVENTS`, `BUS_EVENTS`, `BUS_TO_SSE_MAP`, `FORWARDED_BUS_EVENTS`, `STATUS_CODES`, `TOOL_NAMES`, `DEFAULTS` |
+| Status helpers | `emitStatus`, `writeStatus`, `StatusPayload`, `StatusCode` |
 | Card registry | `CardRegistry`, `CardData`, `CardExtractor` |
 | AI provider | `UsageInfo`, `extractUsage`, `extractStreamUsage`, `mergeUsage` |
 | Delegation | `delegationStore`, `getEventBus`, `getAbortSignal`, `DelegationContext` |
