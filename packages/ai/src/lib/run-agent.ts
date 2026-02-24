@@ -3,12 +3,16 @@ import { extractUsage } from "./ai-provider.js";
 import { getEventBus, getAbortSignal } from "./delegation-context.js";
 import { TOOL_NAMES } from "./constants.js";
 import { BUS_EVENTS } from "./events.js";
+import { withResilience } from "./resilience.js";
+
+const BUILT_IN_TOOLS: Set<string> = new Set([TOOL_NAMES.CLARIFY, TOOL_NAMES.MEMORY]);
 import type { ClarifyItem } from "../agents/execute-task.js";
 import type { PluginContext } from "../context.js";
 
 interface AgentConfig {
   system: string;
   tools: Record<string, any>;
+  agentName?: string;
 }
 
 export async function runAgent(
@@ -19,30 +23,37 @@ export async function runAgent(
   maxSteps = ctx.defaultMaxSteps,
 ) {
   const startTime = performance.now();
-  const result = await generateText({
-    model: ctx.getModel(model),
-    system: config.system,
-    prompt: message,
-    tools: config.tools,
-    stopWhen: stepCountIs(maxSteps),
-    abortSignal: getAbortSignal(),
+  const abortSignal = getAbortSignal();
+  const result = await withResilience({
+    fn: (overrideModel) => generateText({
+      model: ctx.getModel(overrideModel ?? model),
+      system: config.system,
+      prompt: message,
+      tools: config.tools,
+      stopWhen: stepCountIs(maxSteps),
+      abortSignal,
+    }),
+    ctx,
+    agent: config.agentName,
+    modelId: model,
+    abortSignal,
   });
 
   const toolsUsed = result.steps
     .flatMap((step) => step.toolCalls)
     .map((tc) => tc.toolName)
-    .filter((t) => t !== TOOL_NAMES.CLARIFY);
+    .filter((t) => !BUILT_IN_TOOLS.has(t));
 
   const bus = getEventBus();
   if (bus) {
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
-        if (tc.toolName !== TOOL_NAMES.CLARIFY) {
+        if (!BUILT_IN_TOOLS.has(tc.toolName)) {
           bus.emit(BUS_EVENTS.TOOL_CALL, { tool: tc.toolName, args: (tc as any).input });
         }
       }
       for (const tr of step.toolResults) {
-        if (tr.toolName !== TOOL_NAMES.CLARIFY) {
+        if (!BUILT_IN_TOOLS.has(tr.toolName)) {
           bus.emit(BUS_EVENTS.TOOL_RESULT, { tool: tr.toolName, result: (tr as any).output });
         }
       }

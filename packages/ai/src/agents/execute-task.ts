@@ -11,6 +11,7 @@ import {
 import { TOOL_NAMES } from "../lib/constants.js";
 import { BUS_EVENTS } from "../lib/events.js";
 import type { PluginContext } from "../context.js";
+import { createMemoryTool, getDefaultMemoryStore } from "./memory-tool.js";
 
 const clarifyItemSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("question"), text: z.string(), context: z.string().optional() }),
@@ -31,6 +32,11 @@ const CLARIFY_TOOL = tool({
     "Only use when you genuinely cannot proceed without user interaction.",
   inputSchema: z.object({ items: z.array(clarifyItemSchema) }),
 });
+
+const MEMORY_PROMPT_SUFFIX =
+  "\n\nYou have access to a _memory tool for storing and retrieving information. " +
+  "Use it to remember important facts, user preferences, or intermediate results. " +
+  "Actions: set (save), get (retrieve by key), list (show all), delete (remove).";
 
 const CLARIFY_PROMPT_SUFFIX =
   "\n\nIMPORTANT: If the user's query is vague or lacks specifics needed to give a good answer, " +
@@ -124,19 +130,46 @@ export async function executeTask(
     abortSignal: parentCtx?.abortSignal,
   };
 
-  const augmentedTools = { ...registration.tools!, [TOOL_NAMES.CLARIFY]: CLARIFY_TOOL };
-  const augmentedSystem = systemPrompt + CLARIFY_PROMPT_SUFFIX;
-
-  const result = await delegationStore.run(childCtx, () =>
-    runAgent(ctx, { system: augmentedSystem, tools: augmentedTools }, query)
-  );
-
-  bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, 200) });
-
-  return {
-    agent,
-    query,
-    result,
-    ...(responseSkillNames.length > 0 && { responseSkills: responseSkillNames }),
+  const augmentedTools: Record<string, any> = {
+    ...registration.tools!,
+    [TOOL_NAMES.CLARIFY]: CLARIFY_TOOL,
   };
+  if (!registration.disableMemoryTool) {
+    augmentedTools[TOOL_NAMES.MEMORY] = createMemoryTool(getDefaultMemoryStore(), agent);
+  }
+
+  // Invoke guard if present
+  if (registration.guard) {
+    const guardResult = await registration.guard(query, agent);
+    if (!guardResult.allowed) {
+      bus?.emit(BUS_EVENTS.DELEGATE_END, {
+        from, to: agent, summary: `Blocked: ${guardResult.reason ?? "guard rejected"}`, error: true,
+      });
+      return errorResult(agent, query, `Guard blocked: ${guardResult.reason ?? "query not allowed"}`);
+    }
+  }
+
+  let augmentedSystem = systemPrompt + CLARIFY_PROMPT_SUFFIX;
+  if (!registration.disableMemoryTool) {
+    augmentedSystem += MEMORY_PROMPT_SUFFIX;
+  }
+
+  try {
+    const result = await delegationStore.run(childCtx, () =>
+      runAgent(ctx, { system: augmentedSystem, tools: augmentedTools, agentName: agent }, query)
+    );
+
+    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, 200) });
+
+    return {
+      agent,
+      query,
+      result,
+      ...(responseSkillNames.length > 0 && { responseSkills: responseSkillNames }),
+    };
+  } catch (err: any) {
+    const message = err instanceof Error ? err.message : String(err);
+    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: `Error: ${message.slice(0, 200)}`, error: true });
+    return errorResult(agent, query, `Agent execution failed: ${message}`);
+  }
 }

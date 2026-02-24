@@ -29,6 +29,9 @@ schema validation.
 11. [Card Extractors](#11-card-extractors)
 12. [Configuration](#12-configuration)
 13. [API Endpoints](#13-api-endpoints)
+14. [Resilience](#14-resilience)
+15. [Conversation Compaction](#15-conversation-compaction)
+16. [Guardrails](#16-guardrails)
 
 ---
 
@@ -238,7 +241,73 @@ interface ToolRegistration {
   tool: any;                         // AI SDK tool() return value
   directExecute?: (input: any) => Promise<any>;
   category?: string;
+  examples?: ToolExample[];          // Structured examples for improved accuracy
 }
+```
+
+### Tool Use Examples
+
+Based on Anthropic research showing 72% to 90% accuracy improvement when tool descriptions
+include concrete examples. The `buildToolDescription()` helper serializes structured examples
+into XML-style `<examples>` tags appended to the tool description.
+
+```ts
+import { buildToolDescription } from "@jombee/ai";
+import type { ToolExample } from "@jombee/ai";
+
+const examples: ToolExample[] = [
+  { name: "Minimal", input: { city: "London" } },
+  {
+    name: "Full parameters",
+    input: { city: "London", units: "metric", days: 5 },
+    description: "Explicitly request metric units with forecast days.",
+  },
+];
+
+const getWeather = tool({
+  description: buildToolDescription("Get weather for a location", examples),
+  inputSchema: z.object({
+    city: z.string(),
+    units: z.enum(["metric", "imperial"]).optional(),
+    days: z.number().optional(),
+  }),
+  execute: async (input) => { /* ... */ },
+});
+
+// Register with examples for API visibility
+plugin.tools.register({
+  name: "getWeather",
+  description: "Get weather for a location",
+  inputSchema: z.object({ city: z.string() }),
+  tool: getWeather,
+  examples,       // surfaced in GET /tools response
+});
+```
+
+#### ToolExample interface
+
+```ts
+interface ToolExample {
+  name?: string;                     // e.g. "Minimal parameters"
+  input: Record<string, unknown>;    // the example input
+  description?: string;              // why this example matters
+}
+```
+
+#### Generated format
+
+The `buildToolDescription()` helper appends XML-style blocks that Claude models parse reliably:
+
+```xml
+<examples>
+<example name="Minimal">
+{"city": "London"}
+</example>
+<example name="Full parameters">
+{"city": "London", "units": "metric", "days": 5}
+Explicitly request metric units with forecast days.
+</example>
+</examples>
 ```
 
 ---
@@ -261,6 +330,8 @@ interface AgentRegistration {
   actions?: ActionRegistration[];    // Custom sub-endpoints
   agents?: string[];                 // (Orchestrators only) explicit routing list
   isOrchestrator?: boolean;          // Marks as orchestrator (cannot be delegated to)
+  disableMemoryTool?: boolean;       // Disable built-in _memory tool (default: false)
+  guard?: (query: string, agent: string) => GuardResult | Promise<GuardResult>;
 }
 ```
 
@@ -429,7 +500,7 @@ When `autonomous: false`, the orchestrator surfaces `_clarify` tool calls as `as
 
 `executeTask(ctx, agent, query, skills?)`:
 1. Validates the target agent exists and is not an orchestrator; checks delegation depth/circularity
-2. Injects query-phase skill content into the system prompt; adds `_clarify` tool
+2. Injects query-phase skill content into the system prompt; adds `_clarify` and `_memory` tools
 3. Runs the agent via `runAgent()` (`generateText`); emits `delegate:start`/`delegate:end` on the bus
 4. Returns `TaskResult` with response, tools used, usage, and response-phase skills
 
@@ -460,6 +531,53 @@ The framework:
 1. Calls `storage.memory.loadMemoriesForIds(["user-123", "preferences"])`
 2. Formats entries as: `[namespace] key: value`
 3. Appends a `## Memory Context` section to the system prompt
+
+### Built-in `_memory` Tool
+
+Every agent automatically receives a `_memory` tool that allows it to read/write memory
+during execution. This mirrors the `_clarify` pattern -- it is injected in `executeTask()`
+and filtered from `toolsUsed` and bus events.
+
+**Tool actions** (discriminated union on `action`):
+- `get` -- retrieve by key: `{ action: "get", key: "color", namespace?: "custom-ns" }`
+- `set` -- save key-value: `{ action: "set", key: "color", value: "blue", context?: "user preference", namespace?: "custom-ns" }`
+- `list` -- list all entries: `{ action: "list", namespace?: "custom-ns" }`
+- `delete` -- remove by key: `{ action: "delete", key: "color", namespace?: "custom-ns" }`
+
+**Default behavior:**
+- Namespace defaults to the agent's name
+- Uses an ephemeral in-memory (Map-based) store -- no disk writes
+- The store is a singleton shared across all agents in the process
+
+**Opt-out per agent:**
+
+```ts
+plugin.agents.register({
+  name: "stateless-agent",
+  disableMemoryTool: true,   // no _memory tool injected
+  // ...
+});
+```
+
+**Override the default store:**
+
+Replace the in-memory store with a persistent implementation via `AIPluginConfig.memoryStore`:
+
+```ts
+const plugin = createAIPlugin({
+  getModel,
+  storage,
+  memoryStore: myPersistentMemoryStore,   // any MemoryStore implementation
+});
+```
+
+Or programmatically:
+
+```ts
+import { setDefaultMemoryStore, createInMemoryMemoryStore } from "@jombee/ai";
+
+setDefaultMemoryStore(myCustomStore);
+```
 
 ### MemoryStore interface
 
@@ -724,6 +842,7 @@ const SSE_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END:   "delegate:end",
   SKILL_INJECT:   "skill:inject",
+  ERROR:          "error",
 };
 ```
 
@@ -843,6 +962,7 @@ data: {"toolsUsed":["routeToAgent","getWeather"],"conversationId":"conv_1234_abc
 | `skill:inject` | `{ agent: string, skills: string[], phase: "query" \| "response" }` |
 | `ask:user` | `{ items: ClarifyItem[] }` |
 | `done` | `{ toolsUsed: string[], conversationId: string, usage: UsageInfo, tasks?: TaskSummary[], awaitingApproval?: boolean, awaitingResponse?: boolean }` |
+| `error` | `{ conversationId: string, error: string }` |
 | `cancelled` | `{ conversationId: string }` |
 
 #### ClarifyItem types
@@ -946,11 +1066,20 @@ interface AIPluginConfig {
   /** Voice configuration (omit to disable voice routes entirely) */
   voice?: VoiceConfig;
 
+  /** Override the in-memory store used by the built-in _memory tool */
+  memoryStore?: MemoryStore;
+
   /** Maximum delegation nesting depth (default: 3) */
   maxDelegationDepth?: number;
 
   /** Default max AI SDK steps per agent call (default: 5) */
   defaultMaxSteps?: number;
+
+  /** Resilience configuration for LLM call retries and fallback */
+  resilience?: ResilienceConfig;
+
+  /** Conversation compaction configuration */
+  compaction?: CompactionConfig;
 
   /** OpenAPI doc metadata */
   openapi?: {
@@ -975,6 +1104,8 @@ const DEFAULTS = {
   MAX_STEPS: 5,
   SYNTHESIS_MESSAGE: "Synthesizing results...",
   RESPONSE_SKILLS_KEY: "_responseSkills",
+  COMPACTION_THRESHOLD: 20,
+  COMPACTION_PRESERVE_RECENT: 4,
 };
 ```
 
@@ -985,6 +1116,7 @@ const TOOL_NAMES = {
   ROUTE_TO_AGENT: "routeToAgent",
   CREATE_TASK: "createTask",
   CLARIFY: "_clarify",
+  MEMORY: "_memory",
 };
 ```
 
@@ -1139,10 +1271,15 @@ Routes marked with `[Auth]` require the configured auth middleware.
 | `GET` | `/conversations` | List all conversations (summaries: id, messageCount, updatedAt) |
 | `GET` | `/conversations/{id}` | Get full conversation with messages |
 | `POST` | `/conversations` | Create a new empty conversation (`{ id: string }`) |
+| `POST` | `/conversations/{id}/compact` | Compact conversation by summarizing older messages |
 | `DELETE` | `/conversations/{id}` | Delete a conversation |
 | `DELETE` | `/conversations/{id}/messages` | Clear messages (keep conversation record) |
 
 Messages have shape: `{ role: "user"|"assistant", content: string, timestamp: string, metadata?: object }`
+
+**POST /conversations/{id}/compact:** `{ preserveRecent?: number, prompt?: string, model?: string }` (all optional)
+
+**Compaction response:** `{ conversationId, summary, summarizedCount, preservedCount, newMessageCount }`
 
 ---
 
@@ -1175,15 +1312,194 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 |----------|---------|
 | Factory | `createAIPlugin`, `AIPluginConfig`, `AIPluginInstance`, `VoiceConfig`, `PluginContext` |
 | Registries | `AgentRegistry`, `ToolRegistry`, `makeRegistryHandlers`, `makeRegistryStreamHandler`, `makeRegistryJsonHandler`, `generateConversationId` |
-| Registry types | `AgentRegistration`, `ToolRegistration`, `AgentHandler`, `ActionRegistration` |
-| Agent utilities | `createOrchestratorAgent`, `DEFAULT_ORCHESTRATOR_PROMPT`, `executeTask`, `AgentEventBus`, `runAgent`, `streamAgentResponse` |
+| Registry types | `AgentRegistration`, `ToolRegistration`, `AgentHandler`, `ActionRegistration`, `GuardResult` |
+| Agent utilities | `createOrchestratorAgent`, `DEFAULT_ORCHESTRATOR_PROMPT`, `executeTask`, `AgentEventBus`, `runAgent`, `streamAgentResponse`, `createMemoryTool`, `getDefaultMemoryStore`, `setDefaultMemoryStore` |
 | Agent types | `OrchestratorAgentConfig`, `TaskResult`, `ClarifyItem`, `AgentEvent` |
+| Tool examples | `ToolExample`, `formatExamplesBlock`, `buildToolDescription` |
 | Constants | `SSE_EVENTS`, `BUS_EVENTS`, `BUS_TO_SSE_MAP`, `FORWARDED_BUS_EVENTS`, `TOOL_NAMES`, `DEFAULTS` |
 | Card registry | `CardRegistry`, `CardData`, `CardExtractor` |
 | AI provider | `UsageInfo`, `extractUsage`, `extractStreamUsage`, `mergeUsage` |
 | Delegation | `delegationStore`, `getEventBus`, `getAbortSignal`, `DelegationContext` |
 | Request mgmt | `registerRequest`, `cancelRequest`, `unregisterRequest` |
+| Resilience | `withResilience`, `isRetryableError`, `ResilienceConfig`, `FallbackContext` |
+| Compaction | `compactConversation`, `needsCompaction`, `COMPACTION_METADATA_KEY`, `CompactionResult`, `CompactionConfig` |
+| Conversation helpers | `loadConversationWithCompaction` |
 | Storage types | `StorageProvider`, `ConversationStore`, `MemoryStore`, `SkillStore`, `TaskStore`, `PromptStore`, `AudioStore` (+ entry/model types) |
-| Storage impl | `createFileStorage`, `FileStorageOptions` |
+| Storage impl | `createFileStorage`, `FileStorageOptions`, `createInMemoryMemoryStore` |
 | Voice | `VoiceProvider`, `VoiceManager`, `OpenAIVoiceProvider`, `OpenAIVoiceProviderConfig` |
 | Auth | `createApiKeyAuth` |
+
+---
+
+## 14. Resilience
+
+All LLM calls (`generateText()` / `streamText()`) are automatically wrapped with retry logic via `withResilience()`.
+
+### ResilienceConfig
+
+```ts
+interface ResilienceConfig {
+  maxRetries?: number;       // Max retry attempts (default: 3)
+  baseDelayMs?: number;      // Base delay for exponential backoff (default: 1000)
+  maxDelayMs?: number;       // Max delay cap (default: 30000)
+  jitterFactor?: number;     // Jitter 0-1 to randomize delay (default: 0.2)
+  onFallback?: (context: FallbackContext) => string | null | Promise<string | null>;
+}
+
+interface FallbackContext {
+  agent?: string;            // Agent name (if applicable)
+  currentModel: string;      // Model that failed
+  retryCount: number;        // Number of retries attempted
+  error: Error;              // The error that caused the failure
+}
+```
+
+### Error classification (`isRetryableError()`)
+
+- **Retryable**: 429, 500-504, timeouts, network errors, "overloaded"/"capacity"
+- **Not retryable**: AbortError, auth errors (401/403), validation errors (400/422)
+
+### Fallback interceptor
+
+When all retries are exhausted, `onFallback` is called. Return a new model ID to retry once more with that model, or `null` to abort.
+
+```ts
+const plugin = createAIPlugin({
+  getModel: (id) => openrouter(id ?? "openai/gpt-4o-mini"),
+  storage,
+  resilience: {
+    maxRetries: 3,
+    onFallback: async ({ currentModel, error }) => {
+      console.warn(`Model ${currentModel} failed: ${error.message}`);
+      return "anthropic/claude-3.5-haiku";  // fallback model
+    },
+  },
+});
+```
+
+### SSE error event
+
+Non-abort stream errors emit an `error` SSE event instead of silently dropping:
+
+```
+event: error
+data: {"conversationId":"conv_123","error":"Provider returned 500"}
+```
+
+### Orchestrator partial success
+
+The orchestrator uses `Promise.allSettled()` for parallel task execution. If some tasks fail, succeeded tasks are still synthesized into a response. Failed tasks include an error message in their result.
+
+---
+
+## 15. Conversation Compaction
+
+Conversations grow unbounded over time. Compaction uses LLM summarization to compress older messages while preserving recent context.
+
+### CompactionConfig
+
+```ts
+interface CompactionConfig {
+  threshold?: number;        // Auto-compact when messages exceed this (default: 20)
+  preserveRecent?: number;   // Recent messages to keep verbatim (default: 4)
+  prompt?: string;           // Custom summarization prompt
+  model?: string;            // Model for summarization (defaults to plugin default)
+  enabled?: boolean;         // Enable/disable auto-compaction (default: true when config provided)
+}
+```
+
+### Auto-compaction
+
+When `compaction` config is provided, conversations are auto-compacted before LLM calls:
+
+```ts
+const plugin = createAIPlugin({
+  getModel,
+  storage,
+  compaction: {
+    threshold: 20,
+    preserveRecent: 4,
+  },
+});
+```
+
+Auto-compaction runs in:
+- `makeRegistryStreamHandler` (agent SSE handler)
+- Orchestrator SSE handler
+
+### Manual compaction endpoint
+
+`POST /conversations/{id}/compact` triggers compaction on demand:
+
+```json
+{
+  "preserveRecent": 4,
+  "prompt": "Custom summarization instructions...",
+  "model": "openai/gpt-4o-mini"
+}
+```
+
+All fields are optional. Returns `{ conversationId, summary, summarizedCount, preservedCount, newMessageCount }`.
+
+### How compaction works
+
+1. Load conversation messages
+2. Split into `toSummarize` (older) and `toPreserve` (recent N)
+3. Call LLM to summarize older messages (previous summaries tagged as `[Previous Summary]`)
+4. Clear conversation, write summary message with `_compaction` metadata marker, write preserved messages back
+
+### Key exports
+
+- `compactConversation(ctx, conversationId, configOverride?)` -- manual compaction
+- `needsCompaction(conversation, threshold?)` -- check if threshold exceeded
+- `COMPACTION_METADATA_KEY` -- metadata marker (`"_compaction"`) on summary messages
+- `loadConversationWithCompaction(ctx, conversationId, newUserMessage)` -- load with auto-compaction
+
+---
+
+## 16. Guardrails
+
+Guardrails provide a pre-execution guard hook on `AgentRegistration` to prevent out-of-scope or malicious queries from reaching agents.
+
+### GuardResult
+
+```ts
+interface GuardResult {
+  allowed: boolean;
+  reason?: string;
+}
+```
+
+### Adding a guard to an agent
+
+```ts
+plugin.agents.register({
+  name: "finance",
+  description: "Financial advisor agent",
+  // ... other fields ...
+  guard: async (query, agent) => {
+    // Simple keyword check
+    if (query.match(/hack|exploit|injection/i)) {
+      return { allowed: false, reason: "Query contains prohibited content" };
+    }
+    // Or use an LLM classifier
+    // const classification = await classifyQuery(query);
+    // if (!classification.safe) return { allowed: false, reason: classification.reason };
+    return { allowed: true };
+  },
+});
+```
+
+### How guards work
+
+1. Guard is called in `executeTask()` after validation checks (agent exists, not orchestrator, has tools, depth check)
+2. If guard returns `{ allowed: false }`, execution is blocked immediately
+3. A `delegate:end` event is emitted with `error: true` and the guard reason
+4. An error result is returned to the orchestrator
+
+### Guard flexibility
+
+The guard is a simple callback -- the consumer decides the complexity:
+- **Simple**: regex or keyword blocklist
+- **Moderate**: embedding similarity check against an allow-list
+- **Full**: LLM classification with `generateObject()` (consumer implements this)

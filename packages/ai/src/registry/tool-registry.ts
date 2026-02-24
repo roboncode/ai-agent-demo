@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ToolExample } from "../lib/tool-examples.js";
 
 export interface ToolRegistration {
   name: string;
@@ -7,6 +8,8 @@ export interface ToolRegistration {
   tool: any;
   directExecute?: (input: any) => Promise<any>;
   category?: string;
+  /** Structured examples for improved tool use accuracy */
+  examples?: ToolExample[];
 }
 
 export class ToolRegistry {

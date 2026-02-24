@@ -1,5 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { OpenAPIHono } from "@hono/zod-openapi";
+import { compactConversation } from "../../lib/compaction.js";
 import type { PluginContext } from "../../context.js";
 
 export function createConversationsRoutes(ctx: PluginContext) {
@@ -77,6 +78,27 @@ export function createConversationsRoutes(ctx: PluginContext) {
       } catch {
         return c.json({ error: "Conversation not found" }, 404);
       }
+    },
+  );
+
+  router.openapi(
+    createRoute({
+      method: "post", path: "/{id}/compact", tags: ["Conversations"], summary: "Compact conversation by summarizing older messages",
+      request: {
+        params: z.object({ id: z.string().openapi({ example: "conv_kanban_taskboard" }) }),
+        body: { content: { "application/json": { schema: z.object({ preserveRecent: z.number().optional(), prompt: z.string().optional(), model: z.string().optional() }) } }, required: false },
+      },
+      responses: {
+        200: { description: "Compaction result", content: { "application/json": { schema: z.object({ conversationId: z.string(), summary: z.string(), summarizedCount: z.number(), preservedCount: z.number(), newMessageCount: z.number() }) } } },
+        404: { description: "Conversation not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
+      },
+    }),
+    async (c) => {
+      const { id } = c.req.param();
+      const body = await c.req.json().catch(() => ({}));
+      const result = await compactConversation(ctx, id, body);
+      if (!result) return c.json({ error: "Conversation not found" }, 404);
+      return c.json({ conversationId: id, ...result }, 200);
     },
   );
 

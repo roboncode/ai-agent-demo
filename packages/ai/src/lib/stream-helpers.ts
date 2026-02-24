@@ -15,6 +15,7 @@ interface AgentStreamConfig {
   model?: string;
   maxSteps?: number;
   conversationId: string;
+  agentName?: string;
   extraDoneData?: Record<string, unknown>;
   onStreamComplete?: (result: { text: string; toolCalls: string[] }) => Promise<void>;
 }
@@ -109,7 +110,11 @@ export function streamAgentResponse(c: Context, ctx: PluginContext, config: Agen
           data: JSON.stringify({ conversationId: config.conversationId }),
         });
       } else {
-        throw err;
+        await stream.writeSSE({
+          id: String(id++),
+          event: SSE_EVENTS.ERROR,
+          data: JSON.stringify({ conversationId: config.conversationId, error: err.message }),
+        });
       }
     } finally {
       unregisterRequest(config.conversationId);

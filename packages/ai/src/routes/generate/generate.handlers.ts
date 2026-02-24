@@ -3,6 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { generateText, streamText, stepCountIs } from "ai";
 import { extractUsage, extractStreamUsage } from "../../lib/ai-provider.js";
 import { SSE_EVENTS } from "../../lib/events.js";
+import { withResilience } from "../../lib/resilience.js";
 import type { PluginContext } from "../../context.js";
 
 export function createGenerateHandlers(ctx: PluginContext) {
@@ -35,12 +36,15 @@ export function createGenerateHandlers(ctx: PluginContext) {
     }
 
     const startTime = performance.now();
-    const result = await generateText({
-      model: ctx.getModel(model),
-      system: systemPrompt,
-      prompt,
-      tools,
-      stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
+    const result = await withResilience({
+      fn: (overrideModel) => generateText({
+        model: ctx.getModel(overrideModel ?? model),
+        system: systemPrompt,
+        prompt,
+        tools,
+        stopWhen: tools ? stepCountIs(maxSteps ?? 5) : undefined,
+      }),
+      ctx, modelId: model,
     });
 
     const toolResults = result.steps

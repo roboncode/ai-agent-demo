@@ -6,6 +6,11 @@ export type AgentHandler = (
   options: { systemPrompt: string; memoryContext?: string },
 ) => Response | Promise<Response>;
 
+export interface GuardResult {
+  allowed: boolean;
+  reason?: string;
+}
+
 export interface ActionRegistration {
   name: string;
   method: "get" | "post" | "put" | "patch" | "delete";
@@ -30,6 +35,11 @@ export interface AgentRegistration {
   agents?: string[];
   /** Marks agent as an orchestrator — orchestrators cannot be delegated to */
   isOrchestrator?: boolean;
+  /** Disable the built-in _memory tool for this agent (default: false) */
+  disableMemoryTool?: boolean;
+  /** Pre-execution guard. Called with the query before the agent runs.
+   *  Return { allowed: false, reason } to block execution. */
+  guard?: (query: string, agent: string) => GuardResult | Promise<GuardResult>;
 }
 
 export class AgentRegistry {

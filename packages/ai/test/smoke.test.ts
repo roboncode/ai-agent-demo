@@ -3,7 +3,8 @@
  * Run with: bun test packages/ai/test/smoke.test.ts
  */
 import { describe, test, expect } from "bun:test";
-import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, TOOL_NAMES, DEFAULTS, CardRegistry, DEFAULT_ORCHESTRATOR_PROMPT } from "../src/index.js";
+import { createAIPlugin, createFileStorage, makeRegistryHandlers, SSE_EVENTS, BUS_EVENTS, TOOL_NAMES, DEFAULTS, CardRegistry, DEFAULT_ORCHESTRATOR_PROMPT, createInMemoryMemoryStore, buildToolDescription, isRetryableError, withResilience, needsCompaction } from "../src/index.js";
+import type { Conversation } from "../src/index.js";
 import { Hono } from "hono";
 import { tool } from "ai";
 import { z } from "zod";
@@ -181,6 +182,7 @@ describe("@jombee/ai smoke test", () => {
     expect(TOOL_NAMES.ROUTE_TO_AGENT).toBe("routeToAgent");
     expect(TOOL_NAMES.CREATE_TASK).toBe("createTask");
     expect(TOOL_NAMES.CLARIFY).toBe("_clarify");
+    expect(TOOL_NAMES.MEMORY).toBe("_memory");
     expect(DEFAULTS.MAX_DELEGATION_DEPTH).toBe(3);
     expect(DEFAULTS.MAX_STEPS).toBe(5);
   });
@@ -213,6 +215,209 @@ describe("@jombee/ai smoke test", () => {
     // Unsubscribe should remove the extractor
     unsub();
     expect(registry.extract("getWeather", { location: "Tokyo" })).toHaveLength(0);
+  });
+
+  test("createInMemoryMemoryStore works (set/get/list/delete)", async () => {
+    const store = createInMemoryMemoryStore();
+
+    // set + get
+    const entry = await store.saveEntry("test-ns", "color", "blue", "user preference");
+    expect(entry.key).toBe("color");
+    expect(entry.value).toBe("blue");
+    expect(entry.context).toBe("user preference");
+
+    const retrieved = await store.getEntry("test-ns", "color");
+    expect(retrieved).not.toBeNull();
+    expect(retrieved!.value).toBe("blue");
+
+    // list
+    await store.saveEntry("test-ns", "name", "Alice");
+    const entries = await store.listEntries("test-ns");
+    expect(entries).toHaveLength(2);
+
+    const namespaces = await store.listNamespaces();
+    expect(namespaces).toContain("test-ns");
+
+    // loadMemoriesForIds
+    const loaded = await store.loadMemoriesForIds(["test-ns"]);
+    expect(loaded).toHaveLength(2);
+    expect(loaded[0].namespace).toBe("test-ns");
+
+    // delete
+    const deleted = await store.deleteEntry("test-ns", "color");
+    expect(deleted).toBe(true);
+    expect(await store.getEntry("test-ns", "color")).toBeNull();
+
+    // delete non-existent
+    expect(await store.deleteEntry("test-ns", "nonexistent")).toBe(false);
+
+    // clearNamespace
+    await store.clearNamespace("test-ns");
+    expect(await store.listEntries("test-ns")).toHaveLength(0);
+  });
+
+  test("buildToolDescription formats examples correctly", () => {
+    // Without examples — returns base description unchanged
+    expect(buildToolDescription("Get weather")).toBe("Get weather");
+    expect(buildToolDescription("Get weather", [])).toBe("Get weather");
+
+    // With examples
+    const result = buildToolDescription("Get weather", [
+      { name: "Minimal", input: { city: "London" } },
+      { name: "Full", input: { city: "London", units: "metric" }, description: "Explicit metric units" },
+    ]);
+
+    expect(result).toContain("Get weather");
+    expect(result).toContain("<examples>");
+    expect(result).toContain("</examples>");
+    expect(result).toContain('<example name="Minimal">');
+    expect(result).toContain('{"city":"London"}');
+    expect(result).toContain("Explicit metric units");
+  });
+
+  test("isRetryableError classifies errors correctly", () => {
+    // Retryable: 429
+    const err429 = Object.assign(new Error("Rate limit 429"), { status: 429 });
+    expect(isRetryableError(err429)).toBe(true);
+
+    // Retryable: 500
+    const err500 = Object.assign(new Error("Server error 500"), { status: 500 });
+    expect(isRetryableError(err500)).toBe(true);
+
+    // Retryable: timeout
+    const errTimeout = new Error("Request timed out");
+    expect(isRetryableError(errTimeout)).toBe(true);
+
+    // Retryable: overloaded
+    const errOverloaded = new Error("Model is overloaded");
+    expect(isRetryableError(errOverloaded)).toBe(true);
+
+    // Not retryable: 401
+    const err401 = Object.assign(new Error("Unauthorized 401"), { status: 401 });
+    expect(isRetryableError(err401)).toBe(false);
+
+    // Not retryable: 400
+    const err400 = Object.assign(new Error("Bad request 400"), { status: 400 });
+    expect(isRetryableError(err400)).toBe(false);
+
+    // Not retryable: AbortError
+    const errAbort = new DOMException("Aborted", "AbortError");
+    expect(isRetryableError(errAbort)).toBe(false);
+
+    // Not an error
+    expect(isRetryableError("string")).toBe(false);
+  });
+
+  test("withResilience retries on retryable error and succeeds", async () => {
+    let attempts = 0;
+    const mockCtx = {
+      config: { resilience: { maxRetries: 3, baseDelayMs: 10, maxDelayMs: 50, jitterFactor: 0 } },
+    } as any;
+
+    const result = await withResilience({
+      fn: async () => {
+        attempts++;
+        if (attempts < 3) throw Object.assign(new Error("Rate limit 429"), { status: 429 });
+        return "success";
+      },
+      ctx: mockCtx,
+    });
+
+    expect(result).toBe("success");
+    expect(attempts).toBe(3);
+  });
+
+  test("withResilience calls onFallback when retries exhaust", async () => {
+    let fallbackCalled = false;
+    const mockCtx = {
+      config: {
+        resilience: {
+          maxRetries: 1,
+          baseDelayMs: 10,
+          maxDelayMs: 50,
+          jitterFactor: 0,
+          onFallback: async (context: any) => {
+            fallbackCalled = true;
+            expect(context.retryCount).toBe(1);
+            expect(context.currentModel).toBe("test-model");
+            return "fallback-model";
+          },
+        },
+      },
+    } as any;
+
+    let lastModelOverride: string | undefined;
+    const result = await withResilience({
+      fn: async (overrideModel) => {
+        lastModelOverride = overrideModel;
+        if (!overrideModel) throw Object.assign(new Error("Server error"), { status: 500 });
+        return "fallback-success";
+      },
+      ctx: mockCtx,
+      modelId: "test-model",
+    });
+
+    expect(fallbackCalled).toBe(true);
+    expect(lastModelOverride).toBe("fallback-model");
+    expect(result).toBe("fallback-success");
+  });
+
+  test("needsCompaction returns correct threshold check", () => {
+    const makeConv = (count: number): Conversation => ({
+      id: "test",
+      messages: Array.from({ length: count }, (_, i) => ({
+        role: "user" as const,
+        content: `msg ${i}`,
+        timestamp: new Date().toISOString(),
+      })),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Under default threshold (20)
+    expect(needsCompaction(makeConv(10))).toBe(false);
+    expect(needsCompaction(makeConv(20))).toBe(false);
+
+    // Over default threshold
+    expect(needsCompaction(makeConv(21))).toBe(true);
+
+    // Custom threshold
+    expect(needsCompaction(makeConv(5), 4)).toBe(true);
+    expect(needsCompaction(makeConv(4), 4)).toBe(false);
+  });
+
+  test("guard hook blocks execution when allowed: false", () => {
+    // Register an agent with a guard
+    ai.agents.register({
+      name: "guarded-agent",
+      description: "An agent with a guard",
+      toolNames: ["greet"],
+      defaultFormat: "json",
+      defaultSystem: "You are a guarded agent.",
+      tools: { greet: tool({ description: "Greet", parameters: z.object({ name: z.string() }), execute: async ({ name }) => `Hi ${name}` }) },
+      guard: (query) => {
+        if (query.includes("blocked")) return { allowed: false, reason: "Query contains blocked content" };
+        return { allowed: true };
+      },
+    });
+
+    const reg = ai.agents.get("guarded-agent");
+    expect(reg).toBeDefined();
+    expect(reg!.guard).toBeFunction();
+
+    // Guard blocks
+    const blockResult = reg!.guard!("this is blocked content", "guarded-agent");
+    expect(blockResult).toEqual({ allowed: false, reason: "Query contains blocked content" });
+
+    // Guard allows
+    const allowResult = reg!.guard!("normal query", "guarded-agent");
+    expect(allowResult).toEqual({ allowed: true });
+  });
+
+  test("exports new constants (ERROR event, compaction defaults)", () => {
+    expect(SSE_EVENTS.ERROR).toBe("error");
+    expect(DEFAULTS.COMPACTION_THRESHOLD).toBe(20);
+    expect(DEFAULTS.COMPACTION_PRESERVE_RECENT).toBe(4);
   });
 
   test("cleanup", async () => {

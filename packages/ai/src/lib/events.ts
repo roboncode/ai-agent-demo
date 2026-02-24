@@ -14,6 +14,7 @@ export const SSE_EVENTS = {
   DELEGATE_START: "delegate:start",
   DELEGATE_END: "delegate:end",
   SKILL_INJECT: "skill:inject",
+  ERROR: "error",
 } as const;
 
 export type SseEventName = (typeof SSE_EVENTS)[keyof typeof SSE_EVENTS];

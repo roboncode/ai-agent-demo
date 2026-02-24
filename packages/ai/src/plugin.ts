@@ -6,6 +6,7 @@ import { AgentRegistry } from "./registry/agent-registry.js";
 import { ToolRegistry } from "./registry/tool-registry.js";
 import { CardRegistry } from "./lib/card-registry.js";
 import { DEFAULTS } from "./lib/constants.js";
+import { setDefaultMemoryStore } from "./agents/memory-tool.js";
 import { VoiceManager } from "./voice/voice-manager.js";
 import { configureOpenAPI } from "./lib/configure-openapi.js";
 
@@ -20,6 +21,10 @@ import { createConversationsRoutes } from "./routes/conversations/conversations.
 import { createVoiceRoutes } from "./routes/voice/voice.routes.js";
 
 export function createAIPlugin(config: AIPluginConfig): AIPluginInstance {
+  if (config.memoryStore) {
+    setDefaultMemoryStore(config.memoryStore);
+  }
+
   const agents = new AgentRegistry();
   const tools = new ToolRegistry();
   const cards = new CardRegistry();

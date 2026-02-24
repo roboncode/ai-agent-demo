@@ -34,6 +34,7 @@ export function createToolsRoutes(ctx: PluginContext) {
     (c) => {
       const tools = ctx.tools.list().map((t) => ({
         name: t.name, description: t.description, category: t.category, inputSchema: t.inputSchema,
+        ...(t.examples && { examples: t.examples }),
       }));
       return c.json({ tools, count: tools.length });
     },

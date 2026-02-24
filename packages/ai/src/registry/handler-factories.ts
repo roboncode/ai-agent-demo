@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { PluginContext } from "../context.js";
 import type { AgentHandler } from "./agent-registry.js";
+import { loadConversationWithCompaction } from "../lib/conversation-helpers.js";
 
 export function generateConversationId(existing?: string) {
   return existing ?? `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -21,21 +22,10 @@ export function makeRegistryStreamHandler(config: RegistryHandlerConfig, ctx: Pl
       ? `${systemPrompt}\n\n## Memory Context\n${memoryContext}`
       : systemPrompt;
 
-    // If a conversationId is provided, load history from the store
+    // If a conversationId is provided, load history (with auto-compaction) from the store
     let historyMessages: Array<{ role: "user" | "assistant"; content: string }> | undefined;
     if (cid) {
-      const conv = await ctx.storage.conversations.get(cid);
-      if (conv) {
-        await ctx.storage.conversations.append(cid, {
-          role: "user",
-          content: message,
-          timestamp: new Date().toISOString(),
-        });
-        historyMessages = [
-          ...conv.messages.map((m) => ({ role: m.role, content: m.content })),
-          { role: "user" as const, content: message },
-        ];
-      }
+      historyMessages = await loadConversationWithCompaction(ctx, cid, message);
     }
 
     const promptOrMessages = historyMessages

@@ -9,11 +9,30 @@ import { getOrchestratorAgents, getEventBus, getAbortSignal, delegationStore } f
 import { registerRequest, cancelRequest, unregisterRequest } from "../lib/request-registry.js";
 import { SSE_EVENTS, BUS_EVENTS, BUS_TO_SSE_MAP, FORWARDED_BUS_EVENTS } from "../lib/events.js";
 import { TOOL_NAMES, DEFAULTS } from "../lib/constants.js";
+import { withResilience } from "../lib/resilience.js";
+import { loadConversationWithCompaction } from "../lib/conversation-helpers.js";
 import type { CardData } from "../lib/card-registry.js";
 import type { CardRegistry } from "../lib/card-registry.js";
 import type { AgentEventBus } from "../lib/agent-events.js";
 import type { PluginContext } from "../context.js";
 import type { AgentRegistration } from "../registry/agent-registry.js";
+
+async function executeTasksSettled(
+  ctx: PluginContext,
+  tasks: { agent: string; query: string; skills?: string[] }[],
+): Promise<TaskResult[]> {
+  const settled = await Promise.allSettled(
+    tasks.map((t) => executeTask(ctx, t.agent, t.query, t.skills))
+  );
+  return settled.map((s, i) => {
+    if (s.status === "fulfilled") return s.value;
+    return {
+      agent: tasks[i].agent,
+      query: tasks[i].query,
+      result: { response: `Task failed: ${(s.reason as Error)?.message ?? "Unknown error"}`, toolsUsed: [] },
+    };
+  });
+}
 
 export const DEFAULT_ORCHESTRATOR_PROMPT = `You are an orchestrator agent that routes user queries to the appropriate specialist agent.
 
@@ -117,8 +136,7 @@ async function synthesizeStreaming(opts: {
   let fullText = "";
   for await (const text of synthesisResult.textStream) { fullText += text; await writer.write(SSE_EVENTS.TEXT_DELTA, { text }); }
   const synthesisUsage = await synthesisResult.usage;
-  const usage = extractStreamUsage(synthesisUsage, synthesisStart);
-  return { text: fullText, usage };
+  return { text: fullText, usage: extractStreamUsage(synthesisUsage, synthesisStart) };
 }
 
 async function synthesizeJson(opts: {
@@ -130,9 +148,11 @@ async function synthesizeJson(opts: {
   if (skillNames.length > 0) bus?.emit(BUS_EVENTS.SKILL_INJECT, { agent: agentName, skills: skillNames, phase: "response" });
   const prompt = buildSynthesisPrompt(sources, userMessage);
   const synthesisStart = performance.now();
-  const synthesisResult = await generateText({ model: ctx.getModel(model), ...(synthesisSystem && { system: synthesisSystem }), prompt });
-  const usage = extractUsage(synthesisResult, synthesisStart);
-  return { text: synthesisResult.text, usage };
+  const synthesisResult = await withResilience({
+    fn: (overrideModel) => generateText({ model: ctx.getModel(overrideModel ?? model), ...(synthesisSystem && { system: synthesisSystem }), prompt }),
+    ctx, agent: agentName, modelId: model,
+  });
+  return { text: synthesisResult.text, usage: extractUsage(synthesisResult, synthesisStart) };
 }
 
 // ── Agent helpers
@@ -238,11 +258,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
 
     let historyMessages: Array<{ role: "user" | "assistant"; content: string }> | undefined;
     if (cid) {
-      const conv = await ctx.storage.conversations.get(cid);
-      if (conv) {
-        historyMessages = [...conv.messages.map((m) => ({ role: m.role, content: m.content })), { role: "user" as const, content: message }];
-      }
-      await ctx.storage.conversations.append(cid, { role: "user", content: message, timestamp: new Date().toISOString() });
+      historyMessages = await loadConversationWithCompaction(ctx, cid, message);
     }
 
     async function saveAssistantResponse(text: string, cards?: CardData[]) {
@@ -260,7 +276,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
         await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
         try {
           await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
-          const results = await Promise.all(approvedPlan.map((task: any) => executeTask(ctx, task.agent, task.query, task.skills)));
+          const results = await executeTasksSettled(ctx, approvedPlan.map((task: any) => ({ agent: task.agent, query: task.query, skills: task.skills })));
           await writer.flush();
           const responseSkills = collectResponseSkills(results);
           const sources = taskResultsToSources(results);
@@ -297,10 +313,13 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
       try {
         await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
         const planStart = performance.now();
-        const planResult = await generateText({
-          model: ctx.getModel(model), system,
-          ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
-          tools, stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal,
+        const planResult = await withResilience({
+          fn: (overrideModel) => generateText({
+            model: ctx.getModel(overrideModel ?? model), system,
+            ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
+            tools, stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal,
+          }),
+          ctx, agent: agentName, modelId: model, abortSignal,
         });
         const planUsage = extractUsage(planResult, planStart);
         await writer.flush();
@@ -336,7 +355,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
             await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.CREATE_TASK], conversationId: convId, awaitingApproval: true, tasks, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
             return;
           }
-          const results = await Promise.all(tasks.map((task) => executeTask(ctx, task.agent, task.query, task.skills)));
+          const results = await executeTasksSettled(ctx, tasks);
           await writer.flush();
           const responseSkills = collectResponseSkills(results);
           const sources = taskResultsToSources(results);
@@ -394,7 +413,7 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
 
     if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
       const overallStart = performance.now();
-      const results = await Promise.all(approvedPlan.map((task: any) => executeTask(ctx, task.agent, task.query, task.skills)));
+      const results = await executeTasksSettled(ctx, approvedPlan.map((task: any) => ({ agent: task.agent, query: task.query, skills: task.skills })));
       const responseSkills = collectResponseSkills(results);
       const sources = taskResultsToSources(results);
       const { text, usage: synthUsage } = await synthesizeJson({
@@ -415,16 +434,19 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
     const routeToAgentTool = buildRoutingTool(ctx, allowedAgents);
     const createTaskTool = buildCreateTaskTool(ctx, allowedAgents);
 
-    const result = await generateText({
-      model: ctx.getModel(model), system, prompt: message,
-      tools: { [TOOL_NAMES.ROUTE_TO_AGENT]: routeToAgentTool, [TOOL_NAMES.CREATE_TASK]: createTaskTool },
-      stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal: getAbortSignal(),
+    const result = await withResilience({
+      fn: (overrideModel) => generateText({
+        model: ctx.getModel(overrideModel ?? model), system, prompt: message,
+        tools: { [TOOL_NAMES.ROUTE_TO_AGENT]: routeToAgentTool, [TOOL_NAMES.CREATE_TASK]: createTaskTool },
+        stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal: getAbortSignal(),
+      }),
+      ctx, agent: agentName, modelId: model, abortSignal: getAbortSignal(),
     });
 
     // Handle deferred createTask calls
     const tasks = collectTasksFromSteps(result.steps);
     if (tasks.length > 0) {
-      const results = await Promise.all(tasks.map((task) => executeTask(ctx, task.agent, task.query, task.skills)));
+      const results = await executeTasksSettled(ctx, tasks);
       const responseSkills = collectResponseSkills(results);
       const sources = taskResultsToSources(results);
       const { text, usage: synthUsage } = await synthesizeJson({
