@@ -148,7 +148,7 @@ plugin.tools.register({
 
 // 3. Register an agent that uses the tool
 const tools = { getWeather };
-const { sseHandler, jsonHandler } = makeRegistryHandlers({ tools }, pluginCtx);
+const { sseHandler, jsonHandler } = plugin.createHandlers({ tools });
 
 plugin.agents.register({
   name: "weather",
@@ -162,18 +162,20 @@ plugin.agents.register({
 });
 ```
 
+> **Note:** `plugin.createHandlers()` is a convenience wrapper around `makeRegistryHandlers()` that automatically passes the internal `PluginContext`. If you need lower-level control, you can still import `makeRegistryHandlers` directly.
+
 ### Register an orchestrator
 
 ```ts
-import { createOrchestratorAgent } from "@jombee/ai";
-
 // The orchestrator auto-discovers all non-orchestrator agents
-createOrchestratorAgent(pluginCtx, {
+plugin.createOrchestrator({
   name: "orchestrator",
   description: "Routes queries to specialist agents",
   autonomous: true,
 });
 ```
+
+> **Note:** `plugin.createOrchestrator()` is a convenience wrapper around `createOrchestratorAgent()` that automatically passes the internal `PluginContext`. You can still import `createOrchestratorAgent` directly if needed.
 
 ---
 

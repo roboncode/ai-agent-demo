@@ -9,6 +9,8 @@
     "dev": "bun run --filter '*' dev",
     "dev:server": "bun run --filter '@ai-agent-demo/server' dev",
     "dev:client": "bun run --filter 'client' dev",
+    "dev:test-server": "bun run --filter 'test-server' dev",
+    "dev:test-client": "bun run --filter 'test-client' dev",
     "build": "bun run --filter '*' build",
     "start": "bun run --filter '*' start"
   }

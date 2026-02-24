@@ -1,11 +1,12 @@
 import type { LanguageModel } from "ai";
 import type { MiddlewareHandler } from "hono";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import type { AgentRegistry } from "./registry/agent-registry.js";
+import type { AgentRegistry, AgentHandler, AgentRegistration } from "./registry/agent-registry.js";
 import type { ToolRegistry } from "./registry/tool-registry.js";
 import type { VoiceManager } from "./voice/voice-manager.js";
 import type { CardRegistry } from "./lib/card-registry.js";
 import type { StorageProvider, MemoryStore } from "./storage/interfaces.js";
+import type { OrchestratorAgentConfig } from "./agents/orchestrator.js";
 
 export interface AIPluginConfig {
   /** Returns a LanguageModel for the given model ID (or default) */
@@ -87,4 +88,11 @@ export interface AIPluginInstance {
   voice?: VoiceManager;
   /** Load prompt overrides and finalize setup */
   initialize(): Promise<void>;
+  /** Create SSE + JSON handler pair for a set of tools (used when registering agents) */
+  createHandlers(config: { tools: Record<string, any>; maxSteps?: number }): {
+    sseHandler: AgentHandler;
+    jsonHandler: AgentHandler;
+  };
+  /** Create and register an orchestrator agent */
+  createOrchestrator(config: OrchestratorAgentConfig): AgentRegistration;
 }

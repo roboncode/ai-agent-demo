@@ -7,6 +7,8 @@ import { ToolRegistry } from "./registry/tool-registry.js";
 import { CardRegistry } from "./lib/card-registry.js";
 import { DEFAULTS } from "./lib/constants.js";
 import { setDefaultMemoryStore } from "./agents/memory-tool.js";
+import { makeRegistryHandlers } from "./registry/handler-factories.js";
+import { createOrchestratorAgent } from "./agents/orchestrator.js";
 import { VoiceManager } from "./voice/voice-manager.js";
 import { configureOpenAPI } from "./lib/configure-openapi.js";
 
@@ -100,6 +102,12 @@ export function createAIPlugin(config: AIPluginConfig): AIPluginInstance {
       console.log(
         `[ai-plugin] Initialized: ${agents.list().length} agents, ${tools.list().length} tools, ${skills.length} skills`,
       );
+    },
+    createHandlers(handlerConfig) {
+      return makeRegistryHandlers(handlerConfig, ctx);
+    },
+    createOrchestrator(orchestratorConfig) {
+      return createOrchestratorAgent(ctx, orchestratorConfig);
     },
   };
 }

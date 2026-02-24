@@ -182,6 +182,8 @@ function buildRoutingTool(ctx: PluginContext, allowedAgents?: string[]) {
     }),
     execute: async ({ agent, query, skills }) => {
       const taskResult = await executeTask(ctx, agent, query, skills);
+      const resp = taskResult.result.response;
+      console.log(`[orchestrator:routeToAgent] agent=${agent}, toolsUsed=[${taskResult.result.toolsUsed}], response=${resp ? resp.slice(0, 200) : "(empty)"}`);
       return { ...taskResult.result, [DEFAULTS.RESPONSE_SKILLS_KEY]: taskResult.responseSkills ?? [] };
     },
   });
@@ -294,8 +296,12 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
           await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
           await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
         } catch (err: any) {
-          if (err.name === "AbortError" || abortSignal?.aborted) await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
-          else throw err;
+          if (err.name === "AbortError" || abortSignal?.aborted) {
+            await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
+          } else {
+            console.error(`[orchestrator:${agentName}] approvedPlan SSE error:`, err.message ?? err);
+            await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+          }
         } finally { unregisterRequest(convId); unsub(); }
       }));
     }
@@ -382,10 +388,14 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
         const routeResults = planResult.steps.flatMap((step) => step.toolResults).filter((tr) => tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT);
         if (routeResults.length > 0) {
           const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?.[DEFAULTS.RESPONSE_SKILLS_KEY] ?? []))];
-          const sources: SynthesisSource[] = routeResults.map((tr, i) => ({
-            label: `Result ${i + 1}`,
-            response: (tr as any).output?.response ?? "",
-          }));
+          const sources: SynthesisSource[] = routeResults.map((tr, i) => {
+            const output = (tr as any).output;
+            // Fallback: try .result if .output is missing (AI SDK version compat)
+            const resolved = output ?? (tr as any).result;
+            const response = resolved?.response ?? "";
+            console.log(`[orchestrator:synthesis] source ${i + 1}: hasOutput=${!!output}, hasResult=${!!(tr as any).result}, response=${response ? response.slice(0, 200) : "(empty)"}`);
+            return { label: `Result ${i + 1}`, response };
+          });
           const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
             ctx, model, sources, userMessage: message, skillNames: responseSkills,
             writer, agentName, abortSignal,
@@ -403,8 +413,12 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
           await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))], conversationId: convId, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
         }
       } catch (err: any) {
-        if (err.name === "AbortError" || abortSignal.aborted) await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
-        else throw err;
+        if (err.name === "AbortError" || abortSignal.aborted) {
+          await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
+        } else {
+          console.error(`[orchestrator:${agentName}] SSE error:`, err.message ?? err);
+          await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+        }
       } finally { unregisterRequest(convId); unsub(); }
     }));
   };
