@@ -9,6 +9,7 @@ import { DEFAULTS } from "./lib/constants.js";
 import { setDefaultMemoryStore } from "./agents/memory-tool.js";
 import { makeRegistryHandlers } from "./registry/handler-factories.js";
 import { createOrchestratorAgent } from "./agents/orchestrator.js";
+import { createMemoryStorage } from "./storage/in-memory/index.js";
 import { VoiceManager } from "./voice/voice-manager.js";
 import { configureOpenAPI } from "./lib/configure-openapi.js";
 
@@ -27,6 +28,11 @@ export function createAIPlugin(config: AIPluginConfig): AIPluginInstance {
     setDefaultMemoryStore(config.memoryStore);
   }
 
+  const storage = config.storage ?? (() => {
+    console.log("[ai-plugin] Using in-memory storage (data will not persist across restarts)");
+    return createMemoryStorage();
+  })();
+
   const agents = new AgentRegistry();
   const tools = new ToolRegistry();
   const cards = new CardRegistry();
@@ -35,7 +41,7 @@ export function createAIPlugin(config: AIPluginConfig): AIPluginInstance {
   const ctx: PluginContext = {
     agents,
     tools,
-    storage: config.storage,
+    storage,
     getModel: config.getModel,
     voice,
     cards,
@@ -91,14 +97,14 @@ export function createAIPlugin(config: AIPluginConfig): AIPluginInstance {
     voice,
     async initialize() {
       // Load persisted prompt overrides
-      const overrides = await config.storage.prompts.loadOverrides();
+      const overrides = await storage.prompts.loadOverrides();
       const overrideMap: Record<string, string> = {};
       for (const [name, entry] of Object.entries(overrides)) {
         overrideMap[name] = entry.prompt;
       }
       agents.loadPromptOverrides(overrideMap);
 
-      const skills = await config.storage.skills.listSkills();
+      const skills = await storage.skills.listSkills();
       console.log(
         `[ai-plugin] Initialized: ${agents.list().length} agents, ${tools.list().length} tools, ${skills.length} skills`,
       );

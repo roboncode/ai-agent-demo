@@ -8,6 +8,7 @@ const panels = {
   Orchestrator: lazy(() => import("./components/OrchestratorPanel.tsx")),
   Tools: lazy(() => import("./components/ToolsPanel.tsx")),
   Generate: lazy(() => import("./components/GeneratePanel.tsx")),
+  Voice: lazy(() => import("./components/VoicePanel.tsx")),
   Memory: lazy(() => import("./components/MemoryPanel.tsx")),
   Skills: lazy(() => import("./components/SkillsPanel.tsx")),
   Conversations: lazy(() => import("./components/ConversationsPanel.tsx")),
@@ -23,7 +24,7 @@ interface NavSection {
 const sections: NavSection[] = [
   { label: "Overview", items: ["Health"] },
   { label: "Agents", items: ["Agents", "Chat", "Orchestrator"] },
-  { label: "Resources", items: ["Tools", "Generate"] },
+  { label: "Resources", items: ["Tools", "Generate", "Voice"] },
   { label: "Data", items: ["Memory", "Skills", "Conversations"] },
 ];
 

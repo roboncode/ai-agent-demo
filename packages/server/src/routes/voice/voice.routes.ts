@@ -164,10 +164,16 @@ router.openapi(
 
     const retainAudio = formData.get("retainAudio") === "true" || env.VOICE_RETAIN_AUDIO;
 
-    const result = await provider.transcribe(audioFile, {
-      language: language ?? undefined,
-      prompt: prompt ?? undefined,
-    });
+    let result;
+    try {
+      result = await provider.transcribe(audioFile, {
+        language: language ?? undefined,
+        prompt: prompt ?? undefined,
+      });
+    } catch (err: any) {
+      console.error("[voice/transcribe] Transcription failed:", err.message);
+      return c.json({ error: err.message || "Transcription failed" }, 502);
+    }
 
     // Optionally retain the audio
     let audioId: string | undefined;
@@ -289,6 +295,9 @@ router.openapi(
     description:
       "Full cycle: transcribe audio → run supervisor agent → speak response. Returns audio stream with metadata in headers.",
     request: {
+      query: z.object({
+        provider: z.string().optional().openapi({ description: "Voice provider for STT (e.g. groq)" }),
+      }),
       body: {
         content: {
           "multipart/form-data": {
@@ -323,12 +332,15 @@ router.openapi(
     },
   }),
   async (c) => {
+    const sttProviderName = c.req.query("provider") || undefined;
     let provider;
     try {
-      provider = requireVoice();
+      provider = requireVoice(sttProviderName);
     } catch {
       return c.json({ error: "Voice provider not configured. Set OPENAI_API_KEY to enable voice features." }, 503);
     }
+    // Use default provider for TTS if a different STT provider was requested
+    const ttsProvider = sttProviderName ? requireVoice() : provider;
 
     const formData = await c.req.formData();
     const audioFile = formData.get("audio") as File | null;
@@ -344,7 +356,13 @@ router.openapi(
     const conversationId = (formData.get("conversationId") as string) ?? undefined;
 
     // Step 1: Transcribe
-    const transcription = await provider.transcribe(audioFile);
+    let transcription;
+    try {
+      transcription = await provider.transcribe(audioFile);
+    } catch (err: any) {
+      console.error("[voice/converse] Transcription failed:", err.message);
+      return c.json({ error: err.message || "Transcription failed" }, 502);
+    }
 
     if (!transcription.text.trim()) {
       return c.json({ error: "Could not transcribe audio. Please try again." }, 400);
@@ -357,7 +375,7 @@ router.openapi(
 
     // Step 3: Speak response
     const audioFormat = (format as "mp3" | "opus" | "wav" | "aac" | "flac") ?? "mp3";
-    const audioStream = await provider.speak(responseText, { speaker, format: audioFormat, speed });
+    const audioStream = await ttsProvider.speak(responseText, { speaker, format: audioFormat, speed });
 
     const mimeTypes: Record<string, string> = {
       mp3: "audio/mpeg",

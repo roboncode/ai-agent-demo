@@ -11,8 +11,9 @@ import type { OrchestratorAgentConfig } from "./agents/orchestrator.js";
 export interface AIPluginConfig {
   /** Returns a LanguageModel for the given model ID (or default) */
   getModel: (id?: string) => LanguageModel;
-  /** Storage provider (use createFileStorage() for file-based) */
-  storage: StorageProvider;
+  /** Storage provider. Defaults to in-memory (ephemeral) if omitted.
+   *  Use createFileStorage() for disk persistence or provide your own. */
+  storage?: StorageProvider;
   /** Optional auth middleware applied to all routes */
   authMiddleware?: MiddlewareHandler;
   /** Voice configuration (omit to disable voice routes) */

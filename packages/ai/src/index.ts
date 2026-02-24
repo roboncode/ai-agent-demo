@@ -67,6 +67,7 @@ export type {
 } from "./storage/interfaces.js";
 export { createFileStorage } from "./storage/file-storage/index.js";
 export type { FileStorageOptions } from "./storage/file-storage/index.js";
+export { createMemoryStorage } from "./storage/in-memory/index.js";
 export { createInMemoryMemoryStore } from "./storage/in-memory/memory-store.js";
 
 // ── Tool examples ──

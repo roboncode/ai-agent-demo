@@ -112,6 +112,67 @@ export async function deleteJson<T = unknown>(endpoint: string): Promise<T> {
   return data as T;
 }
 
+export async function postFormData<T = unknown>(
+  endpoint: string,
+  formData: FormData,
+): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    method: "POST",
+    headers: { "X-API-Key": env.VITE_API_KEY },
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw Object.assign(new Error(extractError(data, res.status)), {
+      status: res.status,
+      data,
+    });
+  }
+  return data as T;
+}
+
+export async function postJsonRaw(
+  endpoint: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res
+      .json()
+      .catch(() => ({ error: `HTTP ${res.status}` }));
+    throw Object.assign(new Error(extractError(data, res.status)), {
+      status: res.status,
+      data,
+    });
+  }
+  return res;
+}
+
+export async function postFormDataRaw(
+  endpoint: string,
+  formData: FormData,
+): Promise<Response> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    method: "POST",
+    headers: { "X-API-Key": env.VITE_API_KEY },
+    body: formData,
+  });
+  if (!res.ok) {
+    const data = await res
+      .json()
+      .catch(() => ({ error: `HTTP ${res.status}` }));
+    throw Object.assign(new Error(extractError(data, res.status)), {
+      status: res.status,
+      data,
+    });
+  }
+  return res;
+}
+
 export async function postSse(
   endpoint: string,
   body: Record<string, unknown>,

@@ -49,7 +49,16 @@ export class OpenAIVoiceProvider implements VoiceProvider {
 
   async transcribe(audio: Blob | Buffer, options?: TranscribeOptions): Promise<TranscribeResult> {
     const form = new FormData();
-    const blob = audio instanceof Blob ? audio : new Blob([new Uint8Array(audio)], { type: "audio/webm" });
+
+    // Always re-buffer to a fresh Blob to avoid Bun runtime issues
+    // where File objects from parsed formData can't be re-sent reliably
+    let blob: Blob;
+    if (audio instanceof Blob) {
+      const buffer = await audio.arrayBuffer();
+      blob = new Blob([buffer], { type: (audio as File).type || "audio/webm" });
+    } else {
+      blob = new Blob([new Uint8Array(audio)], { type: "audio/webm" });
+    }
     form.append("file", blob, "audio.webm");
     form.append("model", options?.model ?? this.sttModel);
     if (options?.language) form.append("language", options.language);

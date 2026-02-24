@@ -72,10 +72,16 @@ export function createVoiceRoutes(ctx: PluginContext) {
       const prompt = formData.get("prompt") as string | null;
       const retainAudio = formData.get("retainAudio") === "true" || ctx.config.voice?.retainAudio;
 
-      const result = await provider.transcribe(audioFile, {
-        language: language ?? undefined,
-        prompt: prompt ?? undefined,
-      });
+      let result;
+      try {
+        result = await provider.transcribe(audioFile, {
+          language: language ?? undefined,
+          prompt: prompt ?? undefined,
+        });
+      } catch (err: any) {
+        console.error("[voice/transcribe] Transcription failed:", err.message);
+        return c.json({ error: err.message || "Transcription failed" }, 502);
+      }
 
       let audioId: string | undefined;
       if (retainAudio) {
@@ -134,6 +140,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
       summary: "Voice conversation (audio in, audio out)",
       description: "Full cycle: transcribe audio -> run agent -> speak response.",
       request: {
+        query: z.object({ provider: z.string().optional() }),
         body: { content: { "multipart/form-data": { schema: z.object({
           audio: z.any().openapi({ type: "string", format: "binary" }),
           speaker: z.string().optional(), format: z.string().optional(), speed: z.string().optional(),
@@ -147,8 +154,11 @@ export function createVoiceRoutes(ctx: PluginContext) {
       },
     }),
     (async (c: any) => {
+      const sttProviderName = c.req.query("provider") || undefined;
       let provider;
-      try { provider = requireVoice(); } catch { return c.json({ error: "Voice provider not configured." }, 503); }
+      try { provider = requireVoice(sttProviderName); } catch { return c.json({ error: "Voice provider not configured." }, 503); }
+      // Use default provider for TTS (speak) if STT provider differs
+      const ttsProvider = sttProviderName ? requireVoice() : provider;
 
       const formData = await c.req.formData();
       const audioFile = formData.get("audio") as File | null;
@@ -161,14 +171,20 @@ export function createVoiceRoutes(ctx: PluginContext) {
       const conversationId = (formData.get("conversationId") as string) ?? undefined;
 
       // Step 1: Transcribe
-      const transcription = await provider.transcribe(audioFile);
+      let transcription;
+      try {
+        transcription = await provider.transcribe(audioFile);
+      } catch (err: any) {
+        console.error("[voice/converse] Transcription failed:", err.message);
+        return c.json({ error: err.message || "Transcription failed" }, 502);
+      }
       if (!transcription.text.trim()) return c.json({ error: "Could not transcribe audio." }, 400);
 
-      // Step 2: Run agent via internal fetch (same approach as original)
-      // For now, we try to find the orchestrator agent or first available agent
+      // Step 2: Run agent — prefer a regular agent with tools (not the orchestrator)
       const requestedAgent = formData.get("agent") as string | null;
       const orchestrators = ctx.agents.getOrchestratorNames();
-      const agentName = requestedAgent ?? (orchestrators.size > 0 ? orchestrators.values().next().value! : ctx.agents.list()[0]?.name ?? "assistant");
+      const regularAgents = ctx.agents.list().filter((a) => !orchestrators.has(a.name) && a.tools && Object.keys(a.tools).length > 0);
+      const agentName = requestedAgent ?? regularAgents[0]?.name ?? ctx.agents.list()[0]?.name ?? "assistant";
       const { runAgent } = await import("../../lib/run-agent.js");
       const agent = ctx.agents.get(agentName);
       const systemPrompt = agent ? ctx.agents.getResolvedPrompt(agentName) ?? "" : "You are a helpful assistant.";
@@ -178,7 +194,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
 
       // Step 3: Speak response
       const audioFormat = (format as "mp3" | "opus" | "wav" | "aac" | "flac") ?? "mp3";
-      const audioStream = await provider.speak(responseText, { speaker, format: audioFormat, speed });
+      const audioStream = await ttsProvider.speak(responseText, { speaker, format: audioFormat, speed });
 
       const mimeTypes: Record<string, string> = { mp3: "audio/mpeg", opus: "audio/opus", wav: "audio/wav", aac: "audio/aac", flac: "audio/flac" };
 
