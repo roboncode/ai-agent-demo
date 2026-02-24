@@ -39,6 +39,20 @@ export async function getJson<T = unknown>(endpoint: string): Promise<T> {
   return data as T;
 }
 
+export async function getBlob(endpoint: string): Promise<Blob> {
+  const res = await fetch(`${getBaseUrl()}${endpoint}`, {
+    headers: { "X-API-Key": env.VITE_API_KEY },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw Object.assign(new Error(extractError(data, res.status)), {
+      status: res.status,
+      data,
+    });
+  }
+  return res.blob();
+}
+
 export async function postJson<T = unknown>(
   endpoint: string,
   body: Record<string, unknown>,

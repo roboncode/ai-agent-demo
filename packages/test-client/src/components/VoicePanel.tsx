@@ -1,5 +1,5 @@
 import { createSignal, For, Show, onCleanup, type Component } from "solid-js";
-import { getJson, postJsonRaw, postFormData, postFormDataRaw, deleteJson } from "../lib/api";
+import { getJson, getBlob, postJsonRaw, postFormData, postFormDataRaw, deleteJson } from "../lib/api";
 import { chunkedSpeak, AudioScheduler } from "@jombee/ai-client";
 import JsonView from "./shared/JsonView.tsx";
 
@@ -62,6 +62,10 @@ const VoicePanel: Component = () => {
   // Availability
   const [voiceAvailable, setVoiceAvailable] = createSignal<boolean | null>(null);
 
+  // Audio library playback
+  const [libraryAudioUrl, setLibraryAudioUrl] = createSignal<string | null>(null);
+  const [playingEntryId, setPlayingEntryId] = createSignal<string | null>(null);
+
   onCleanup(() => {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
       mediaRecorder.stop();
@@ -119,10 +123,29 @@ const VoicePanel: Component = () => {
   async function deleteAudioEntry(id: string) {
     setError("");
     try {
+      if (playingEntryId() === id) {
+        if (libraryAudioUrl()) URL.revokeObjectURL(libraryAudioUrl()!);
+        setLibraryAudioUrl(null);
+        setPlayingEntryId(null);
+      }
       await deleteJson(`/api/voice/audio/${id}`);
       setAudioEntries((prev) => prev.filter((e) => e.id !== id));
     } catch (e: any) {
       setError(e.message);
+    }
+  }
+
+  async function playEntry(id: string) {
+    setError("");
+    if (libraryAudioUrl()) URL.revokeObjectURL(libraryAudioUrl()!);
+    setLibraryAudioUrl(null);
+    setPlayingEntryId(id);
+    try {
+      const blob = await getBlob(`/api/voice/audio/${id}`);
+      setLibraryAudioUrl(URL.createObjectURL(blob));
+    } catch (e: any) {
+      setError(e.message);
+      setPlayingEntryId(null);
     }
   }
 
@@ -362,6 +385,7 @@ const VoicePanel: Component = () => {
 
   // Load on mount
   loadProviders();
+  loadAudioEntries();
 
   return (
     <div class="flex-1 overflow-auto panel-scroll">
@@ -618,26 +642,30 @@ const VoicePanel: Component = () => {
               <div class="space-y-2">
                 <For each={audioEntries()}>
                   {(entry) => (
-                    <div class="bg-raised rounded-md px-4 py-3 text-sm flex items-center gap-3">
-                      <span class="font-mono text-accent text-xs truncate max-w-[200px]">{entry.id}</span>
-                      <span class="text-muted text-xs">{entry.mimeType}</span>
-                      <span class="text-muted text-xs">{formatBytes(entry.size)}</span>
-                      <span class="text-muted text-xs ml-auto">{new Date(entry.createdAt).toLocaleTimeString()}</span>
-                      <button
-                        class="rounded px-2 py-1 text-xs font-medium text-info bg-info/10 border border-info/20 hover:bg-info/20 transition-colors"
-                        onClick={() => {
-                          const url = `/api/voice/audio/${entry.id}`;
-                          window.open(url, "_blank");
-                        }}
-                      >
-                        Play
-                      </button>
-                      <button
-                        class="rounded px-2 py-1 text-xs font-medium text-danger bg-danger/10 border border-danger/20 hover:bg-danger/20 transition-colors"
-                        onClick={() => deleteAudioEntry(entry.id)}
-                      >
-                        Delete
-                      </button>
+                    <div class="space-y-2">
+                      <div class="bg-raised rounded-md px-4 py-3 text-sm flex items-center gap-3">
+                        <span class="font-mono text-accent text-xs truncate max-w-[200px]">{entry.id}</span>
+                        <span class="text-muted text-xs">{entry.mimeType}</span>
+                        <span class="text-muted text-xs">{formatBytes(entry.size)}</span>
+                        <span class="text-muted text-xs ml-auto">{new Date(entry.createdAt).toLocaleTimeString()}</span>
+                        <button
+                          class="rounded px-2 py-1 text-xs font-medium text-info bg-info/10 border border-info/20 hover:bg-info/20 transition-colors"
+                          onClick={() => playEntry(entry.id)}
+                        >
+                          {playingEntryId() === entry.id && !libraryAudioUrl() ? "Loading..." : "Play"}
+                        </button>
+                        <button
+                          class="rounded px-2 py-1 text-xs font-medium text-danger bg-danger/10 border border-danger/20 hover:bg-danger/20 transition-colors"
+                          onClick={() => deleteAudioEntry(entry.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <Show when={playingEntryId() === entry.id && libraryAudioUrl()}>
+                        <div class="bg-raised rounded-md p-3 ml-4">
+                          <audio controls autoplay src={libraryAudioUrl()!} class="w-full" />
+                        </div>
+                      </Show>
                     </div>
                   )}
                 </For>

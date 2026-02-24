@@ -9,4 +9,5 @@ packages/server/data/memory/*
 !packages/server/data/memory/.gitkeep
 !packages/server/data/skills/
 *.png
+packages/test-server/data/audio/
 .playwright-mcp
