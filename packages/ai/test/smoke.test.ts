@@ -181,8 +181,8 @@ describe("@jombee/ai smoke test", () => {
     expect(BUS_EVENTS.DELEGATE_START).toBe("delegate:start");
     expect(TOOL_NAMES.ROUTE_TO_AGENT).toBe("routeToAgent");
     expect(TOOL_NAMES.CREATE_TASK).toBe("createTask");
-    expect(TOOL_NAMES.CLARIFY).toBe("_clarify");
-    expect(TOOL_NAMES.MEMORY).toBe("_memory");
+    expect(TOOL_NAMES.CLARIFY).toBe("clarify");
+    expect(TOOL_NAMES.MEMORY).toBe("memory");
     expect(DEFAULTS.MAX_DELEGATION_DEPTH).toBe(3);
     expect(DEFAULTS.MAX_STEPS).toBe(5);
   });

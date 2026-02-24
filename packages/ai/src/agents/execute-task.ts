@@ -33,14 +33,14 @@ const CLARIFY_TOOL = tool({
 });
 
 const MEMORY_PROMPT_SUFFIX =
-  "\n\nYou have access to a _memory tool for storing and retrieving information. " +
+  "\n\nYou have access to a memory tool for storing and retrieving information. " +
   "Use it to remember important facts, user preferences, or intermediate results. " +
   "Actions: set (save), get (retrieve by key), list (show all), delete (remove).";
 
 const CLARIFY_PROMPT_SUFFIX =
   "\n\nIMPORTANT: If the user's query is vague or lacks specifics needed to give a good answer, " +
-  "you MUST use the _clarify tool to ask for more information. Do NOT guess, do NOT ask in plain text, " +
-  "and do NOT proceed without the needed details. Call _clarify with items like: " +
+  "you MUST use the clarify tool to ask for more information. Do NOT guess, do NOT ask in plain text, " +
+  "and do NOT proceed without the needed details. Call clarify with items like: " +
   '{items: [{type: "question", text: "Your question here", context: "Why you need this"}]}.';
 
 export interface TaskResult {

@@ -332,7 +332,7 @@ interface AgentRegistration {
   actions?: ActionRegistration[];    // Custom sub-endpoints
   agents?: string[];                 // (Orchestrators only) explicit routing list
   isOrchestrator?: boolean;          // Marks as orchestrator (cannot be delegated to)
-  disableMemoryTool?: boolean;       // Disable built-in _memory tool (default: false)
+  disableMemoryTool?: boolean;       // Disable built-in memory tool (default: false)
   guard?: (query: string, agent: string) => GuardResult | Promise<GuardResult>;
 }
 ```
@@ -489,7 +489,7 @@ When `planMode: true` is sent in the request body:
 
 ### Non-autonomous mode
 
-When `autonomous: false`, the orchestrator surfaces `_clarify` tool calls as `ask:user` SSE events and returns `awaitingApproval: true` for multi-task plans instead of auto-executing.
+When `autonomous: false`, the orchestrator surfaces `clarify` tool calls as `ask:user` SSE events and returns `awaitingApproval: true` for multi-task plans instead of auto-executing.
 
 ### Delegation depth and safety
 
@@ -502,7 +502,7 @@ When `autonomous: false`, the orchestrator surfaces `_clarify` tool calls as `as
 
 `executeTask(ctx, agent, query, skills?)`:
 1. Validates the target agent exists and is not an orchestrator; checks delegation depth/circularity
-2. Injects query-phase skill content into the system prompt; adds `_clarify` and `_memory` tools
+2. Injects query-phase skill content into the system prompt; adds `clarify` and `memory` tools
 3. Runs the agent via `runAgent()` (`generateText`); emits `delegate:start`/`delegate:end` on the bus
 4. Returns `TaskResult` with response, tools used, usage, and response-phase skills
 
@@ -534,10 +534,10 @@ The framework:
 2. Formats entries as: `[namespace] key: value`
 3. Appends a `## Memory Context` section to the system prompt
 
-### Built-in `_memory` Tool
+### Built-in `memory` Tool
 
-Every agent automatically receives a `_memory` tool that allows it to read/write memory
-during execution. This mirrors the `_clarify` pattern -- it is injected in `executeTask()`
+Every agent automatically receives a `memory` tool that allows it to read/write memory
+during execution. This mirrors the `clarify` pattern -- it is injected in `executeTask()`
 and filtered from `toolsUsed` and bus events.
 
 **Tool actions** (discriminated union on `action`):
@@ -556,7 +556,7 @@ and filtered from `toolsUsed` and bus events.
 ```ts
 plugin.agents.register({
   name: "stateless-agent",
-  disableMemoryTool: true,   // no _memory tool injected
+  disableMemoryTool: true,   // no memory tool injected
   // ...
 });
 ```
@@ -1138,7 +1138,7 @@ interface AIPluginConfig {
   /** Voice configuration (omit to disable voice routes entirely) */
   voice?: VoiceConfig;
 
-  /** Override the in-memory store used by the built-in _memory tool */
+  /** Override the in-memory store used by the built-in memory tool */
   memoryStore?: MemoryStore;
 
   /** Maximum delegation nesting depth (default: 3) */
@@ -1187,8 +1187,8 @@ const DEFAULTS = {
 const TOOL_NAMES = {
   ROUTE_TO_AGENT: "routeToAgent",
   CREATE_TASK: "createTask",
-  CLARIFY: "_clarify",
-  MEMORY: "_memory",
+  CLARIFY: "clarify",
+  MEMORY: "memory",
 };
 ```
 

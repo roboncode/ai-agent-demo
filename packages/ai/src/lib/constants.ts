@@ -2,8 +2,8 @@
 export const TOOL_NAMES = {
   ROUTE_TO_AGENT: "routeToAgent",
   CREATE_TASK: "createTask",
-  CLARIFY: "_clarify",
-  MEMORY: "_memory",
+  CLARIFY: "clarify",
+  MEMORY: "memory",
 } as const;
 
 /** Default configuration values */

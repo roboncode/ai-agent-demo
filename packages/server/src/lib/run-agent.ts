@@ -27,32 +27,32 @@ export async function runAgent(
   const toolsUsed = result.steps
     .flatMap((step) => step.toolCalls)
     .map((tc) => tc.toolName)
-    .filter((t) => t !== "_clarify");
+    .filter((t) => t !== "clarify");
 
-  // Emit tool events post-hoc to the event bus (skip internal _clarify)
+  // Emit tool events post-hoc to the event bus (skip internal clarify)
   const bus = getEventBus();
   if (bus) {
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
-        if (tc.toolName !== "_clarify") {
+        if (tc.toolName !== "clarify") {
           bus.emit("tool:call", { tool: tc.toolName, args: (tc as any).input });
         }
       }
       for (const tr of step.toolResults) {
-        if (tr.toolName !== "_clarify") {
+        if (tr.toolName !== "clarify") {
           bus.emit("tool:result", { tool: tr.toolName, result: (tr as any).output });
         }
       }
     }
   }
 
-  // Detect _clarify calls (injected by executeTask for interactive mode)
+  // Detect clarify calls (injected by executeTask for interactive mode)
   // Models sometimes ignore the schema and send {questions:[{question,context}]}
   // instead of {items:[{type,text,context}]} — normalize both formats.
   const items: ClarifyItem[] = [];
   for (const step of result.steps) {
     for (const tc of step.toolCalls) {
-      if (tc.toolName === "_clarify") {
+      if (tc.toolName === "clarify") {
         const input = (tc as any).input ?? {};
         if (input.items?.length) {
           items.push(...input.items);
