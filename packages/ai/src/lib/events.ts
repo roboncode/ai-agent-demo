@@ -25,6 +25,8 @@ export const BUS_EVENTS = {
   TEXT_DELTA: "text:delta",
   TOOL_CALL: "tool:call",
   TOOL_RESULT: "tool:result",
+  AGENT_START: "agent:start",
+  AGENT_END: "agent:end",
   DELEGATE_START: "delegate:start",
   DELEGATE_END: "delegate:end",
   SKILL_INJECT: "skill:inject",
@@ -35,6 +37,8 @@ export type BusEventName = (typeof BUS_EVENTS)[keyof typeof BUS_EVENTS];
 
 /** Maps internal bus event names to their corresponding SSE event names */
 export const BUS_TO_SSE_MAP: Record<string, string> = {
+  [BUS_EVENTS.AGENT_START]: SSE_EVENTS.AGENT_START,
+  [BUS_EVENTS.AGENT_END]: SSE_EVENTS.AGENT_END,
   [BUS_EVENTS.DELEGATE_START]: SSE_EVENTS.DELEGATE_START,
   [BUS_EVENTS.DELEGATE_END]: SSE_EVENTS.DELEGATE_END,
   [BUS_EVENTS.TOOL_CALL]: SSE_EVENTS.TOOL_CALL,

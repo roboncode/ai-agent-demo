@@ -49,12 +49,12 @@ export async function runAgent(
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
         if (!BUILT_IN_TOOLS.has(tc.toolName)) {
-          bus.emit(BUS_EVENTS.TOOL_CALL, { tool: tc.toolName, args: (tc as any).input });
+          bus.emit(BUS_EVENTS.TOOL_CALL, { agent: config.agentName, tool: tc.toolName, args: (tc as any).input });
         }
       }
       for (const tr of step.toolResults) {
         if (!BUILT_IN_TOOLS.has(tr.toolName)) {
-          bus.emit(BUS_EVENTS.TOOL_RESULT, { tool: tr.toolName, result: (tr as any).output });
+          bus.emit(BUS_EVENTS.TOOL_RESULT, { agent: config.agentName, tool: tr.toolName, result: (tr as any).output });
         }
       }
     }

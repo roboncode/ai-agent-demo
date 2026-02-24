@@ -18,29 +18,13 @@ export function setDefaultMemoryStore(store: MemoryStore): void {
   defaultStore = store;
 }
 
-const memoryInputSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("get"),
-    key: z.string().describe("The key to retrieve"),
-    namespace: z.string().optional().describe("Override the default namespace"),
-  }),
-  z.object({
-    action: z.literal("set"),
-    key: z.string().describe("The key to store under"),
-    value: z.string().describe("The value to store"),
-    context: z.string().optional().describe("Optional context about why this was stored"),
-    namespace: z.string().optional().describe("Override the default namespace"),
-  }),
-  z.object({
-    action: z.literal("list"),
-    namespace: z.string().optional().describe("Override the default namespace"),
-  }),
-  z.object({
-    action: z.literal("delete"),
-    key: z.string().describe("The key to delete"),
-    namespace: z.string().optional().describe("Override the default namespace"),
-  }),
-]);
+const memoryInputSchema = z.object({
+  action: z.enum(["get", "set", "list", "delete"]),
+  key: z.string().optional().describe("Required for get, set, and delete actions"),
+  value: z.string().optional().describe("Required for set action — the value to store"),
+  context: z.string().optional().describe("Optional context about why this was stored (set action only)"),
+  namespace: z.string().optional().describe("Override the default namespace"),
+});
 
 /**
  * Creates the built-in `_memory` tool bound to a specific store and default namespace.
@@ -58,12 +42,15 @@ export function createMemoryTool(store: MemoryStore, defaultNamespace: string) {
 
       switch (input.action) {
         case "get": {
-          const entry = await store.getEntry(ns, input.key);
-          if (!entry) return { found: false, key: input.key, namespace: ns };
+          const key = input.key ?? "";
+          const entry = await store.getEntry(ns, key);
+          if (!entry) return { found: false, key, namespace: ns };
           return { found: true, key: entry.key, value: entry.value, context: entry.context, namespace: ns };
         }
         case "set": {
-          const entry = await store.saveEntry(ns, input.key, input.value, input.context);
+          const key = input.key ?? "";
+          const value = input.value ?? "";
+          const entry = await store.saveEntry(ns, key, value, input.context);
           return { saved: true, key: entry.key, namespace: ns };
         }
         case "list": {
@@ -75,8 +62,9 @@ export function createMemoryTool(store: MemoryStore, defaultNamespace: string) {
           };
         }
         case "delete": {
-          const deleted = await store.deleteEntry(ns, input.key);
-          return { deleted, key: input.key, namespace: ns };
+          const key = input.key ?? "";
+          const deleted = await store.deleteEntry(ns, key);
+          return { deleted, key, namespace: ns };
         }
       }
     },

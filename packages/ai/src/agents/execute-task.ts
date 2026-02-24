@@ -14,14 +14,12 @@ import { emitStatus } from "../lib/emit-status.js";
 import type { PluginContext } from "../context.js";
 import { createMemoryTool, getDefaultMemoryStore } from "./memory-tool.js";
 
-const clarifyItemSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("question"), text: z.string(), context: z.string().optional() }),
-  z.object({ type: z.literal("option"), text: z.string(), choices: z.array(z.string()), context: z.string().optional() }),
-  z.object({ type: z.literal("confirmation"), text: z.string(), context: z.string().optional() }),
-  z.object({ type: z.literal("action"), text: z.string(), context: z.string().optional() }),
-  z.object({ type: z.literal("warning"), text: z.string(), context: z.string().optional() }),
-  z.object({ type: z.literal("info"), text: z.string() }),
-]);
+const clarifyItemSchema = z.object({
+  type: z.enum(["question", "option", "confirmation", "action", "warning", "info"]),
+  text: z.string(),
+  choices: z.array(z.string()).optional().describe("Required when type is 'option'"),
+  context: z.string().optional(),
+});
 
 export type ClarifyItem = z.infer<typeof clarifyItemSchema>;
 
@@ -157,11 +155,13 @@ export async function executeTask(
   }
 
   try {
+    bus?.emit(BUS_EVENTS.AGENT_START, { agent });
     emitStatus({ code: STATUS_CODES.PROCESSING, message: "Agent starting work", agent });
     const result = await delegationStore.run(childCtx, () =>
       runAgent(ctx, { system: augmentedSystem, tools: augmentedTools, agentName: agent }, query)
     );
 
+    bus?.emit(BUS_EVENTS.AGENT_END, { agent });
     bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, 200) });
 
     return {
@@ -172,6 +172,7 @@ export async function executeTask(
     };
   } catch (err: any) {
     const message = err instanceof Error ? err.message : String(err);
+    bus?.emit(BUS_EVENTS.AGENT_END, { agent, error: message.slice(0, 200) });
     bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: `Error: ${message.slice(0, 200)}`, error: true });
     return errorResult(agent, query, `Agent execution failed: ${message}`);
   }

@@ -69,21 +69,23 @@ export function streamAgentResponse(c: Context, ctx: PluginContext, config: Agen
           });
         } else if (chunk.type === "tool-call") {
           toolsUsed.add(chunk.toolName);
-          bus?.emit(BUS_EVENTS.TOOL_CALL, { tool: chunk.toolName, args: chunk.input });
+          bus?.emit(BUS_EVENTS.TOOL_CALL, { agent: config.agentName, tool: chunk.toolName, args: chunk.input });
           await stream.writeSSE({
             id: String(id++),
             event: SSE_EVENTS.TOOL_CALL,
             data: JSON.stringify({
+              agent: config.agentName,
               toolName: chunk.toolName,
               args: chunk.input,
             }),
           });
         } else if (chunk.type === "tool-result") {
-          bus?.emit(BUS_EVENTS.TOOL_RESULT, { tool: chunk.toolName, result: chunk.output });
+          bus?.emit(BUS_EVENTS.TOOL_RESULT, { agent: config.agentName, tool: chunk.toolName, result: chunk.output });
           await stream.writeSSE({
             id: String(id++),
             event: SSE_EVENTS.TOOL_RESULT,
             data: JSON.stringify({
+              agent: config.agentName,
               toolName: chunk.toolName,
               result: chunk.output,
             }),

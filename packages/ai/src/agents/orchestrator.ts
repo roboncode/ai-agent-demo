@@ -182,8 +182,6 @@ function buildRoutingTool(ctx: PluginContext, allowedAgents?: string[]) {
     }),
     execute: async ({ agent, query, skills }) => {
       const taskResult = await executeTask(ctx, agent, query, skills);
-      const resp = taskResult.result.response;
-      console.log(`[orchestrator:routeToAgent] agent=${agent}, toolsUsed=[${taskResult.result.toolsUsed}], response=${resp ? resp.slice(0, 200) : "(empty)"}`);
       return { ...taskResult.result, [DEFAULTS.RESPONSE_SKILLS_KEY]: taskResult.responseSkills ?? [] };
     },
   });
@@ -273,37 +271,39 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
 
     // approvedPlan shortcut
     if (approvedPlan && Array.isArray(approvedPlan) && approvedPlan.length > 0) {
-      return delegationStore.run(delCtx, () => streamSSE(c, async (stream) => {
-        const writer = createStreamWriter(stream);
-        const bus = getEventBus();
-        const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer, ctx.cards);
-        await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
-        try {
-          await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
-          await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing approved plan tasks", agent: agentName });
-          const results = await executeTasksSettled(ctx, approvedPlan.map((task: any) => ({ agent: task.agent, query: task.query, skills: task.skills })));
-          await writer.flush();
-          const responseSkills = collectResponseSkills(results);
-          const sources = taskResultsToSources(results);
-          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
-            ctx, model, sources, userMessage: message, skillNames: responseSkills,
-            writer, agentName, abortSignal,
-          });
-          await saveAssistantResponse(fullText, collectedCards);
-          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-          const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
-          totalUsage.durationMs = Math.round(performance.now() - overallStart);
-          await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-          await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
-        } catch (err: any) {
-          if (err.name === "AbortError" || abortSignal?.aborted) {
-            await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
-          } else {
-            console.error(`[orchestrator:${agentName}] approvedPlan SSE error:`, err.message ?? err);
-            await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
-          }
-        } finally { unregisterRequest(convId); unsub(); }
-      }));
+      return streamSSE(c, async (stream) => {
+        return delegationStore.run(delCtx, async () => {
+          const writer = createStreamWriter(stream);
+          const bus = getEventBus();
+          const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer, ctx.cards);
+          await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
+          try {
+            await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
+            await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing approved plan tasks", agent: agentName });
+            const results = await executeTasksSettled(ctx, approvedPlan.map((task: any) => ({ agent: task.agent, query: task.query, skills: task.skills })));
+            await writer.flush();
+            const responseSkills = collectResponseSkills(results);
+            const sources = taskResultsToSources(results);
+            const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+              ctx, model, sources, userMessage: message, skillNames: responseSkills,
+              writer, agentName, abortSignal,
+            });
+            await saveAssistantResponse(fullText, collectedCards);
+            const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+            const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
+            totalUsage.durationMs = Math.round(performance.now() - overallStart);
+            await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
+          } catch (err: any) {
+            if (err.name === "AbortError" || abortSignal?.aborted) {
+              await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
+            } else {
+              console.error(`[orchestrator:${agentName}] approvedPlan SSE error:`, err.message ?? err);
+              await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+            }
+          } finally { unregisterRequest(convId); unsub(); }
+        });
+      });
     }
 
     const tools: Record<string, any> = {};
@@ -314,113 +314,113 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
       tools[TOOL_NAMES.CREATE_TASK] = buildCreateTaskTool(ctx, allowedAgents);
     }
 
-    return delegationStore.run(delCtx, () => streamSSE(c, async (stream) => {
-      const writer = createStreamWriter(stream);
-      const bus = getEventBus();
-      const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer, ctx.cards);
-      await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
-      try {
-        await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
-        await writeStatus(writer, { code: STATUS_CODES.THINKING, message: "Analyzing query and routing", agent: agentName });
-        const planStart = performance.now();
-        const planResult = await withResilience({
-          fn: (overrideModel) => generateText({
-            model: ctx.getModel(overrideModel ?? model), system,
-            ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
-            tools, stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal,
-          }),
-          ctx, agent: agentName, modelId: model, abortSignal,
-        });
-        const planUsage = extractUsage(planResult, planStart);
-        await writer.flush();
+    return streamSSE(c, async (stream) => {
+      return delegationStore.run(delCtx, async () => {
+        const writer = createStreamWriter(stream);
+        const bus = getEventBus();
+        const { unsub, cards: collectedCards } = bridgeBusToStream(bus, writer, ctx.cards);
+        await writer.write(SSE_EVENTS.SESSION_START, { conversationId: convId });
+        try {
+          await writer.write(SSE_EVENTS.AGENT_START, { agent: agentName });
+          await writeStatus(writer, { code: STATUS_CODES.THINKING, message: "Analyzing query and routing", agent: agentName });
+          const planStart = performance.now();
+          const planResult = await withResilience({
+            fn: (overrideModel) => generateText({
+              model: ctx.getModel(overrideModel ?? model), system,
+              ...(historyMessages ? { messages: historyMessages.map(m => ({ role: m.role, content: m.content })) } : { prompt: message }),
+              tools, stopWhen: stepCountIs(ctx.defaultMaxSteps), abortSignal,
+            }),
+            ctx, agent: agentName, modelId: model, abortSignal,
+          });
+          const planUsage = extractUsage(planResult, planStart);
+          await writer.flush();
 
-        // Reactive clarification check
-        if (!autonomous) {
-          for (const step of planResult.steps) {
-            for (const tr of step.toolResults) {
-              if (tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT) {
-                const output = (tr as any).output;
-                if (output?.items?.length) {
-                  const agent = (planResult.steps.flatMap((s) => s.toolCalls).find((tc) => tc.toolName === TOOL_NAMES.ROUTE_TO_AGENT)?.input as any)?.agent;
-                  const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
-                  await writer.write(SSE_EVENTS.ASK_USER, { items: taggedItems });
-                  await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-                  const subAgentUsage = output?.usage as UsageInfo | undefined;
-                  const totalUsage = subAgentUsage ? mergeUsage(planUsage, subAgentUsage) : { ...planUsage };
-                  totalUsage.durationMs = Math.round(performance.now() - overallStart);
-                  await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.ROUTE_TO_AGENT], conversationId: convId, awaitingResponse: true, items: taggedItems, usage: totalUsage });
-                  return;
+          // Reactive clarification check
+          if (!autonomous) {
+            for (const step of planResult.steps) {
+              for (const tr of step.toolResults) {
+                if (tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT) {
+                  const output = (tr as any).output;
+                  if (output?.items?.length) {
+                    const agent = (planResult.steps.flatMap((s) => s.toolCalls).find((tc) => tc.toolName === TOOL_NAMES.ROUTE_TO_AGENT)?.input as any)?.agent;
+                    const taggedItems = output.items.map((item: any) => ({ ...item, agent }));
+                    await writer.write(SSE_EVENTS.ASK_USER, { items: taggedItems });
+                    await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
+                    const subAgentUsage = output?.usage as UsageInfo | undefined;
+                    const totalUsage = subAgentUsage ? mergeUsage(planUsage, subAgentUsage) : { ...planUsage };
+                    totalUsage.durationMs = Math.round(performance.now() - overallStart);
+                    await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.ROUTE_TO_AGENT], conversationId: convId, awaitingResponse: true, items: taggedItems, usage: totalUsage });
+                    return;
+                  }
                 }
               }
             }
           }
-        }
 
-        const tasks = collectTasksFromSteps(planResult.steps);
+          const tasks = collectTasksFromSteps(planResult.steps);
 
-        if (tasks.length > 0) {
-          await writeStatus(writer, { code: STATUS_CODES.PLANNING, message: "Building task plan", agent: agentName });
-          await writer.write(SSE_EVENTS.AGENT_PLAN, { tasks });
-          if (!autonomous) {
+          if (tasks.length > 0) {
+            await writeStatus(writer, { code: STATUS_CODES.PLANNING, message: "Building task plan", agent: agentName });
+            await writer.write(SSE_EVENTS.AGENT_PLAN, { tasks });
+            if (!autonomous) {
+              await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
+              await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.CREATE_TASK], conversationId: convId, awaitingApproval: true, tasks, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
+              return;
+            }
+            await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing parallel tasks", agent: agentName });
+            const results = await executeTasksSettled(ctx, tasks);
+            await writer.flush();
+            const responseSkills = collectResponseSkills(results);
+            const sources = taskResultsToSources(results);
+            const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+              ctx, model, sources, userMessage: message, skillNames: responseSkills,
+              writer, agentName, abortSignal,
+            });
+            await saveAssistantResponse(fullText, collectedCards);
+            const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
+            const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+            totalUsage.durationMs = Math.round(performance.now() - overallStart);
             await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [TOOL_NAMES.CREATE_TASK], conversationId: convId, awaitingApproval: true, tasks, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
             return;
           }
-          await writeStatus(writer, { code: STATUS_CODES.EXECUTING_TASKS, message: "Executing parallel tasks", agent: agentName });
-          const results = await executeTasksSettled(ctx, tasks);
-          await writer.flush();
-          const responseSkills = collectResponseSkills(results);
-          const sources = taskResultsToSources(results);
-          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
-            ctx, model, sources, userMessage: message, skillNames: responseSkills,
-            writer, agentName, abortSignal,
-          });
-          await saveAssistantResponse(fullText, collectedCards);
-          const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
-          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
-          totalUsage.durationMs = Math.round(performance.now() - overallStart);
-          await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-          await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
-          return;
-        }
 
-        // Direct mode
-        const routeResults = planResult.steps.flatMap((step) => step.toolResults).filter((tr) => tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT);
-        if (routeResults.length > 0) {
-          const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?.[DEFAULTS.RESPONSE_SKILLS_KEY] ?? []))];
-          const sources: SynthesisSource[] = routeResults.map((tr, i) => {
-            const output = (tr as any).output;
-            // Fallback: try .result if .output is missing (AI SDK version compat)
-            const resolved = output ?? (tr as any).result;
-            const response = resolved?.response ?? "";
-            console.log(`[orchestrator:synthesis] source ${i + 1}: hasOutput=${!!output}, hasResult=${!!(tr as any).result}, response=${response ? response.slice(0, 200) : "(empty)"}`);
-            return { label: `Result ${i + 1}`, response };
-          });
-          const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
-            ctx, model, sources, userMessage: message, skillNames: responseSkills,
-            writer, agentName, abortSignal,
-          });
-          await saveAssistantResponse(fullText, collectedCards);
-          const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
-          const subAgentUsages = routeResults.map((tr) => (tr as any).output?.usage).filter((u): u is UsageInfo => !!u);
-          const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
-          totalUsage.durationMs = Math.round(performance.now() - overallStart);
-          await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-          await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set([TOOL_NAMES.ROUTE_TO_AGENT, ...routeToolsUsed])], conversationId: convId, usage: totalUsage });
-        } else {
-          if (planResult.text) { await writer.write(SSE_EVENTS.TEXT_DELTA, { text: planResult.text }); await saveAssistantResponse(planResult.text, collectedCards); }
-          await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-          await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))], conversationId: convId, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
-        }
-      } catch (err: any) {
-        if (err.name === "AbortError" || abortSignal.aborted) {
-          await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
-        } else {
-          console.error(`[orchestrator:${agentName}] SSE error:`, err.message ?? err);
-          await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
-        }
-      } finally { unregisterRequest(convId); unsub(); }
-    }));
+          // Direct mode
+          const routeResults = planResult.steps.flatMap((step) => step.toolResults).filter((tr) => tr.toolName === TOOL_NAMES.ROUTE_TO_AGENT);
+          if (routeResults.length > 0) {
+            const responseSkills = [...new Set(routeResults.flatMap((tr) => (tr as any).output?.[DEFAULTS.RESPONSE_SKILLS_KEY] ?? []))];
+            const sources: SynthesisSource[] = routeResults.map((tr, i) => {
+              const output = (tr as any).output;
+              const resolved = output ?? (tr as any).result;
+              const response = resolved?.response ?? "";
+              return { label: `Result ${i + 1}`, response };
+            });
+            const { text: fullText, usage: synthUsageInfo } = await synthesizeStreaming({
+              ctx, model, sources, userMessage: message, skillNames: responseSkills,
+              writer, agentName, abortSignal,
+            });
+            await saveAssistantResponse(fullText, collectedCards);
+            const routeToolsUsed = routeResults.flatMap((tr) => (tr as any).output?.toolsUsed ?? []);
+            const subAgentUsages = routeResults.map((tr) => (tr as any).output?.usage).filter((u): u is UsageInfo => !!u);
+            const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
+            totalUsage.durationMs = Math.round(performance.now() - overallStart);
+            await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set([TOOL_NAMES.ROUTE_TO_AGENT, ...routeToolsUsed])], conversationId: convId, usage: totalUsage });
+          } else {
+            if (planResult.text) { await writer.write(SSE_EVENTS.TEXT_DELTA, { text: planResult.text }); await saveAssistantResponse(planResult.text, collectedCards); }
+            await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))], conversationId: convId, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
+          }
+        } catch (err: any) {
+          if (err.name === "AbortError" || abortSignal.aborted) {
+            await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
+          } else {
+            console.error(`[orchestrator:${agentName}] SSE error:`, err.message ?? err);
+            await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+          }
+        } finally { unregisterRequest(convId); unsub(); }
+      });
+    });
   };
 }
 

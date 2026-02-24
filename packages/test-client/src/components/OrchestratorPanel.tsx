@@ -301,7 +301,7 @@ const OrchestratorPanel: Component = () => {
       </div>
 
       {/* Event log sidebar */}
-      <div class="w-80 shrink-0">
+      <div class="w-[40rem] shrink-0">
         <p class="mb-2 text-sm text-gray-400">Event Log ({events().length})</p>
         <EventLog entries={events()} />
       </div>
