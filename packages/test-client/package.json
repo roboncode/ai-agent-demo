@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@jombee/ai-client": "workspace:*",
     "solid-js": "^1.9.10",
     "tailwindcss": "^4.2.0"
   },

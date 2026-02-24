@@ -3,7 +3,7 @@
  * Exponential growth: 1, 2, 3, 5, 8 sentences per chunk.
  * First chunk is tiny for fast time-to-first-audio (~200-400ms).
  */
-function splitIntoChunks(text: string): string[] {
+export function splitIntoChunks(text: string): string[] {
   const sentences = text.match(/[^.!?]*[.!?]+[\s]*/g);
   if (!sentences || sentences.length <= 1) return [text];
 

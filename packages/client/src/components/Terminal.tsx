@@ -2,7 +2,7 @@ import { type Component, For, Show, createEffect, createSignal } from "solid-js"
 import type { TerminalLine as TLine } from "../types";
 import TerminalLine from "./TerminalLine";
 import { speakText } from "../lib/api";
-import { chunkedSpeak } from "../lib/chunked-speak";
+import { chunkedSpeak, AudioScheduler } from "@jombee/ai-client";
 import { MarkdownText } from "../lib/markdown";
 import { FiTerminal, FiArrowDown } from "solid-icons/fi";
 
@@ -32,66 +32,8 @@ const Terminal: Component<Props> = (props) => {
   const [userScrolled, setUserScrolled] = createSignal(false);
   const [isSpeaking, setIsSpeaking] = createSignal(false);
 
-  let audioCtx: AudioContext | null = null;
-  let gainNode: GainNode | null = null;
-  let activeSources: AudioBufferSourceNode[] = [];
-  let nextStartTime = 0;
-  let pendingCount = 0;
-  let doneResolve: (() => void) | null = null;
+  const scheduler = new AudioScheduler();
   let stopped = false;
-
-  function getContext(): AudioContext {
-    if (!audioCtx) {
-      audioCtx = new AudioContext();
-      gainNode = audioCtx.createGain();
-      gainNode.connect(audioCtx.destination);
-    }
-    if (audioCtx.state === "suspended") audioCtx.resume();
-    return audioCtx;
-  }
-
-  function findStartGap(buffer: AudioBuffer): number {
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < data.length; i++) {
-      if (Math.abs(data[i]) > 0.0005) {
-        return Math.max(0, i - 1) / buffer.sampleRate;
-      }
-    }
-    return 0;
-  }
-
-  async function scheduleBlob(blob: Blob): Promise<void> {
-    const ctx = getContext();
-    const arrayBuffer = await blob.arrayBuffer();
-    const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-    const startGap = findStartGap(audioBuffer);
-
-    const source = ctx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(gainNode!);
-
-    const startTime = Math.max(ctx.currentTime + 0.005, nextStartTime);
-    source.start(startTime, startGap);
-    nextStartTime = startTime + (audioBuffer.duration - startGap);
-
-    activeSources.push(source);
-    pendingCount++;
-
-    source.onended = () => {
-      pendingCount--;
-      const idx = activeSources.indexOf(source);
-      if (idx !== -1) activeSources.splice(idx, 1);
-      if (pendingCount === 0 && doneResolve) {
-        doneResolve();
-        doneResolve = null;
-      }
-    };
-  }
-
-  function waitForEnd(): Promise<void> {
-    if (pendingCount === 0) return Promise.resolve();
-    return new Promise((resolve) => { doneResolve = resolve; });
-  }
 
   const ttsEnabled = localStorage.getItem("tts-enabled") === "1";
   const canSpeak = () => ttsEnabled && !!props.responseText && !props.isStreaming;
@@ -104,8 +46,8 @@ const Terminal: Component<Props> = (props) => {
       await chunkedSpeak(
         props.responseText,
         (chunk) => speakText(chunk),
-        scheduleBlob,
-        waitForEnd,
+        (blob) => scheduler.schedule(blob),
+        () => scheduler.waitForEnd(),
         () => stopped,
       );
     } catch {
@@ -117,16 +59,7 @@ const Terminal: Component<Props> = (props) => {
 
   function handleStop() {
     stopped = true;
-    for (const s of activeSources) {
-      try { s.stop(); } catch { /* already stopped */ }
-    }
-    activeSources = [];
-    pendingCount = 0;
-    nextStartTime = 0;
-    if (doneResolve) {
-      doneResolve();
-      doneResolve = null;
-    }
+    scheduler.stop();
     setIsSpeaking(false);
   }
 

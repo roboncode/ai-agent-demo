@@ -1,6 +1,6 @@
 import type { DemoConfig, TerminalLine } from "../types";
 import { postJson, postSse, getStreamMode, deleteJson } from "./api";
-import { parseSseStream, type SseEvent } from "./sse-parser";
+import { parseSseStream, type SseEvent } from "@jombee/ai-client";
 import { wsStream } from "./ws-stream";
 import {
   formatToolCall,

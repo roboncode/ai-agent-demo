@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@jombee/ai-client": "workspace:*",
     "@shikijs/langs": "^3.22.0",
     "@shikijs/themes": "^3.22.0",
     "shiki": "^3.22.0",

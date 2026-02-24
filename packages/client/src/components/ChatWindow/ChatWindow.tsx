@@ -3,7 +3,7 @@ import { createStore, produce } from "solid-js/store";
 import { FiMessageSquare, FiTrash2 } from "solid-icons/fi";
 import type { VisualProps } from "../../types";
 import { postSse, deleteJson, getJson } from "../../lib/api";
-import { parseSseStream } from "../../lib/sse-parser";
+import { parseSseStream } from "@jombee/ai-client";
 import MessageBubble, { type ChatMessage, type CardAttachment } from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import type { WeatherData } from "./WeatherCard";

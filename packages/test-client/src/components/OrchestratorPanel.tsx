@@ -1,6 +1,6 @@
 import { createSignal, For, Show, type Component } from "solid-js";
 import { getJson, postSse } from "../lib/api";
-import { parseSseStream } from "../lib/sse-parser";
+import { parseSseStream } from "@jombee/ai-client";
 import EventLog, { type LogEntry } from "./shared/EventLog.tsx";
 import RequestInfo from "./shared/RequestInfo.tsx";
 import StatusBadge from "./shared/StatusBadge.tsx";

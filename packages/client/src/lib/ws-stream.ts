@@ -1,4 +1,4 @@
-import type { SseEvent } from "./sse-parser";
+import type { SseEvent } from "@jombee/ai-client";
 import { env } from "../env";
 
 /**

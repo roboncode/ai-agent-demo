@@ -1,5 +1,6 @@
 import { createSignal, For, Show, onCleanup, type Component } from "solid-js";
 import { getJson, postJsonRaw, postFormData, postFormDataRaw, deleteJson } from "../lib/api";
+import { chunkedSpeak, AudioScheduler } from "@jombee/ai-client";
 import JsonView from "./shared/JsonView.tsx";
 
 interface VoiceProvider {
@@ -37,6 +38,10 @@ const VoicePanel: Component = () => {
   const [ttsFormat, setTtsFormat] = createSignal("mp3");
   const [ttsSave, setTtsSave] = createSignal(true);
   const [audioUrl, setAudioUrl] = createSignal<string | null>(null);
+  const [chunkedEnabled, setChunkedEnabled] = createSignal(false);
+  const [isPlaying, setIsPlaying] = createSignal(false);
+  const scheduler = new AudioScheduler();
+  let playbackStopped = false;
 
   // STT state
   const [transcription, setTranscription] = createSignal<string | null>(null);
@@ -63,6 +68,7 @@ const VoicePanel: Component = () => {
       mediaRecorder.stream.getTracks().forEach((t) => t.stop());
     }
     if (durationInterval) clearInterval(durationInterval);
+    scheduler.stop();
   });
 
   async function loadProviders() {
@@ -155,6 +161,66 @@ const VoicePanel: Component = () => {
       setError(e.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function synthesizeChunk(chunk: string): Promise<Blob> {
+    const res = await postJsonRaw("/api/voice/speak", {
+      text: chunk,
+      speaker: ttsSpeaker(),
+      format: ttsFormat(),
+      save: false,
+    });
+    return res.blob();
+  }
+
+  async function speakChunked() {
+    setLoading(true);
+    setError("");
+    setActiveAction("speak-chunked");
+    setResult(null);
+    playbackStopped = false;
+
+    try {
+      setIsPlaying(true);
+      await chunkedSpeak(
+        ttsText(),
+        synthesizeChunk,
+        (blob) => scheduler.schedule(blob),
+        () => scheduler.waitForEnd(),
+        () => playbackStopped,
+      );
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setIsPlaying(false);
+      setLoading(false);
+      setResult({ mode: "chunked", status: "done" });
+    }
+  }
+
+  function stopPlayback() {
+    playbackStopped = true;
+    scheduler.stop();
+    setIsPlaying(false);
+  }
+
+  async function playResponseChunked(text: string) {
+    setError("");
+    playbackStopped = false;
+    try {
+      setIsPlaying(true);
+      await chunkedSpeak(
+        text,
+        synthesizeChunk,
+        (blob) => scheduler.schedule(blob),
+        () => scheduler.waitForEnd(),
+        () => playbackStopped,
+      );
+    } catch {
+      // ignore — stop or playback error
+    } finally {
+      setIsPlaying(false);
     }
   }
 
@@ -394,13 +460,31 @@ const VoicePanel: Component = () => {
                 />
                 Save to server
               </label>
-              <button
-                class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-root border border-accent hover:bg-accent-bright transition-colors disabled:opacity-40"
-                onClick={speak}
-                disabled={loading() || !ttsText().trim()}
-              >
-                {loading() && activeAction() === "speak" ? "Generating..." : "Speak"}
-              </button>
+              <label class="flex items-center gap-2 text-sm text-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={chunkedEnabled()}
+                  onChange={(e) => setChunkedEnabled(e.currentTarget.checked)}
+                  class="accent-accent"
+                />
+                Chunked playback
+              </label>
+              <Show when={isPlaying()} fallback={
+                <button
+                  class="rounded-md bg-accent px-4 py-2 text-sm font-medium text-root border border-accent hover:bg-accent-bright transition-colors disabled:opacity-40"
+                  onClick={chunkedEnabled() ? speakChunked : speak}
+                  disabled={loading() || !ttsText().trim()}
+                >
+                  {loading() && (activeAction() === "speak" || activeAction() === "speak-chunked") ? "Generating..." : "Speak"}
+                </button>
+              }>
+                <button
+                  class="rounded-md bg-danger px-4 py-2 text-sm font-medium text-white border border-danger hover:bg-danger/80 transition-colors"
+                  onClick={stopPlayback}
+                >
+                  Stop
+                </button>
+              </Show>
             </div>
             <Show when={audioUrl()}>
               <div class="bg-raised rounded-md p-3">
@@ -497,6 +581,23 @@ const VoicePanel: Component = () => {
                 </Show>
                 <Show when={converseAudioUrl()}>
                   <audio controls src={converseAudioUrl()!} class="w-full" />
+                </Show>
+                <Show when={converseResponse()}>
+                  <Show when={isPlaying()} fallback={
+                    <button
+                      class="rounded-md bg-accent/15 px-3 py-1.5 text-xs font-medium text-accent border border-accent/30 hover:bg-accent/25 transition-colors"
+                      onClick={() => playResponseChunked(converseResponse()!)}
+                    >
+                      Play Response (chunked)
+                    </button>
+                  }>
+                    <button
+                      class="rounded-md bg-danger/15 px-3 py-1.5 text-xs font-medium text-danger border border-danger/30 hover:bg-danger/25 transition-colors"
+                      onClick={stopPlayback}
+                    >
+                      Stop Playback
+                    </button>
+                  </Show>
                 </Show>
               </div>
             </Show>
