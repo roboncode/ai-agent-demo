@@ -778,6 +778,16 @@ const storage = createFileStorage({ dataDir: "./data" });
 
 This creates JSON files under `./data/` for each sub-store.
 
+### In-memory storage
+
+```ts
+import { createMemoryStorage } from "@jombee/ai";
+
+const storage = createMemoryStorage();
+```
+
+Creates a fully in-memory `StorageProvider` — all sub-stores (conversations, memory, skills, tasks, prompts, audio) live in process memory and are lost on restart. Ideal for testing, development, and demos where disk persistence isn't needed.
+
 ### Implementing a custom backend
 
 Each sub-store is an independent interface. You can mix backends (e.g. Postgres for
@@ -1379,7 +1389,8 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 | Agent types | `OrchestratorAgentConfig`, `TaskResult`, `ClarifyItem`, `AgentEvent` |
 | Tool examples | `ToolExample`, `formatExamplesBlock`, `buildToolDescription` |
 | Constants | `SSE_EVENTS`, `BUS_EVENTS`, `BUS_TO_SSE_MAP`, `FORWARDED_BUS_EVENTS`, `STATUS_CODES`, `TOOL_NAMES`, `DEFAULTS` |
-| Status helpers | `emitStatus`, `writeStatus`, `StatusPayload`, `StatusCode` |
+| Constant types | `SseEventName`, `BusEventName`, `StatusCode` |
+| Status helpers | `emitStatus`, `writeStatus`, `StatusPayload` |
 | Card registry | `CardRegistry`, `CardData`, `CardExtractor` |
 | AI provider | `UsageInfo`, `extractUsage`, `extractStreamUsage`, `mergeUsage` |
 | Delegation | `delegationStore`, `getEventBus`, `getAbortSignal`, `DelegationContext` |
@@ -1387,9 +1398,9 @@ Key exports from `@jombee/ai` (see `src/index.ts` for the complete list):
 | Resilience | `withResilience`, `isRetryableError`, `ResilienceConfig`, `FallbackContext` |
 | Compaction | `compactConversation`, `needsCompaction`, `COMPACTION_METADATA_KEY`, `CompactionResult`, `CompactionConfig` |
 | Conversation helpers | `loadConversationWithCompaction` |
-| Storage types | `StorageProvider`, `ConversationStore`, `MemoryStore`, `SkillStore`, `TaskStore`, `PromptStore`, `AudioStore` (+ entry/model types) |
-| Storage impl | `createFileStorage`, `FileStorageOptions`, `createInMemoryMemoryStore` |
-| Voice | `VoiceProvider`, `VoiceManager`, `OpenAIVoiceProvider`, `OpenAIVoiceProviderConfig` |
+| Storage types | `StorageProvider`, `ConversationStore`, `ConversationMessage`, `Conversation`, `ConversationSummary`, `MemoryStore`, `MemoryEntry`, `SkillStore`, `SkillMeta`, `Skill`, `SkillPhase`, `TaskStore`, `Task`, `PromptStore`, `PromptOverride`, `AudioStore`, `AudioEntry` |
+| Storage impl | `createFileStorage`, `FileStorageOptions`, `createMemoryStorage`, `createInMemoryMemoryStore` |
+| Voice | `VoiceProvider`, `VoiceManager`, `OpenAIVoiceProvider`, `OpenAIVoiceProviderConfig`, `TranscribeOptions`, `TranscribeResult`, `SpeakOptions`, `VoiceSpeaker` |
 | Auth | `createApiKeyAuth` |
 
 ---
