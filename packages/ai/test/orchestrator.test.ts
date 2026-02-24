@@ -2,9 +2,7 @@
  * Orchestrator delegation flow tests.
  * Run with: bun test packages/ai/test/orchestrator.test.ts
  */
-import { describe, test, expect, mock, beforeEach } from "bun:test";
-import { tool } from "ai";
-import { z } from "zod";
+import { describe, test, expect } from "bun:test";
 import {
   AgentRegistry,
   AgentEventBus,
@@ -19,159 +17,14 @@ import {
   getOrchestratorAgents,
   getEventBus,
 } from "../src/lib/delegation-context.js";
-import type { PluginContext } from "../src/context.js";
-import type { AgentRegistration } from "../src/registry/agent-registry.js";
-import type { StorageProvider } from "../src/storage/interfaces.js";
-import { CardRegistry } from "../src/lib/card-registry.js";
-import { ToolRegistry } from "../src/registry/tool-registry.js";
-
-// ── Mock helpers ──────────────────────────────────────────────────────────────
-
-/** Minimal LanguageModel mock that resolves without network calls. */
-function makeMockModel(textResponse = "mock response") {
-  return {
-    specificationVersion: "v1" as const,
-    provider: "mock",
-    modelId: "mock-model",
-    defaultObjectGenerationMode: "json" as const,
-    doGenerate: async () => ({
-      text: textResponse,
-      finishReason: "stop" as const,
-      usage: { promptTokens: 10, completionTokens: 5 },
-      rawCall: { rawPrompt: "", rawSettings: {} },
-    }),
-    doStream: async () => ({
-      stream: new ReadableStream({
-        start(controller) {
-          controller.enqueue({ type: "text-delta", textDelta: textResponse });
-          controller.enqueue({
-            type: "finish",
-            finishReason: "stop",
-            usage: { promptTokens: 10, completionTokens: 5 },
-          });
-          controller.close();
-        },
-      }),
-      rawCall: { rawPrompt: "", rawSettings: {} },
-    }),
-  };
-}
-
-/** Minimal in-memory StorageProvider that satisfies the interface. */
-function makeStorage(): StorageProvider {
-  const conversations = new Map<string, any>();
-  const skills = new Map<string, any>();
-  const prompts = new Map<string, any>();
-
-  return {
-    conversations: {
-      get: async (id) => conversations.get(id) ?? null,
-      list: async () => [],
-      create: async (id) => {
-        const c = { id, messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        conversations.set(id, c);
-        return c;
-      },
-      append: async (id, msg) => {
-        const c = conversations.get(id) ?? { id, messages: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        c.messages.push(msg);
-        conversations.set(id, c);
-        return c;
-      },
-      delete: async (id) => conversations.delete(id),
-      clear: async (id) => {
-        const c = conversations.get(id);
-        if (c) { c.messages = []; }
-        return c;
-      },
-    },
-    memory: {
-      listNamespaces: async () => [],
-      listEntries: async () => [],
-      saveEntry: async (ns, key, value, context = "") => ({ key, value, context, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-      getEntry: async () => null,
-      deleteEntry: async () => false,
-      clearNamespace: async () => {},
-      loadMemoriesForIds: async () => [],
-    },
-    skills: {
-      listSkills: async () => [],
-      getSkill: async () => null,
-      createSkill: async (name, content) => ({ name, description: "", tags: [], phase: "both" as const, content, rawContent: content, updatedAt: new Date().toISOString() }),
-      updateSkill: async (name, content) => ({ name, description: "", tags: [], phase: "both" as const, content, rawContent: content, updatedAt: new Date().toISOString() }),
-      deleteSkill: async () => false,
-      getSkillSummaries: async () => "(no skills configured)",
-    },
-    tasks: {
-      createTask: async (title) => ({ id: "t1", title, status: "todo" as const, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-      listTasks: async () => [],
-      updateTask: async (id, updates) => ({ id, title: updates.title ?? "", status: updates.status ?? "todo" as const, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
-      deleteTask: async () => false,
-    },
-    prompts: {
-      loadOverrides: async () => ({}),
-      saveOverride: async (name, prompt) => ({ prompt, updatedAt: new Date().toISOString() }),
-      deleteOverride: async () => false,
-    },
-    audio: {
-      saveAudio: async (buffer, mimeType) => ({ id: "a1", mimeType, size: 0, createdAt: new Date().toISOString() }),
-      getAudio: async () => null,
-      deleteAudio: async () => false,
-      listAudio: async () => [],
-      cleanupOlderThan: async () => 0,
-    },
-  };
-}
-
-/** Create a fresh PluginContext with a clean AgentRegistry. */
-function makeCtx(overrides?: Partial<PluginContext>): PluginContext {
-  return {
-    agents: new AgentRegistry(),
-    tools: new ToolRegistry(),
-    storage: makeStorage(),
-    getModel: () => makeMockModel() as any,
-    cards: new CardRegistry(),
-    maxDelegationDepth: DEFAULTS.MAX_DELEGATION_DEPTH,
-    defaultMaxSteps: DEFAULTS.MAX_STEPS,
-    config: {
-      getModel: () => makeMockModel() as any,
-      storage: makeStorage(),
-    } as any,
-    ...overrides,
-  };
-}
-
-/** Minimal tool for use in agent registrations. */
-const helloTool = tool({
-  description: "Say hello",
-  parameters: z.object({ name: z.string() }),
-  execute: async ({ name }) => `Hello, ${name}!`,
-});
-
-/** Register a non-orchestrator agent with a real tool. */
-function registerSpecialistAgent(
-  ctx: PluginContext,
-  name: string,
-  extraTools: Record<string, any> = {}
-): AgentRegistration {
-  const reg: AgentRegistration = {
-    name,
-    description: `${name} specialist`,
-    toolNames: ["hello", ...Object.keys(extraTools)],
-    defaultFormat: "json",
-    defaultSystem: `You are the ${name} agent.`,
-    tools: { hello: helloTool, ...extraTools },
-  };
-  ctx.agents.register(reg);
-  return reg;
-}
+import { makeCtx, helloTool, registerSpecialist } from "./helpers.js";
 
 // ── 1. Orchestrator registration ──────────────────────────────────────────────
 
 describe("createOrchestratorAgent", () => {
   test("registers an agent with isOrchestrator: true", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, { name: "main-orchestrator" });
 
@@ -182,7 +35,7 @@ describe("createOrchestratorAgent", () => {
 
   test("registered orchestrator has both sseHandler and jsonHandler", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, { name: "main-orchestrator" });
 
@@ -194,7 +47,7 @@ describe("createOrchestratorAgent", () => {
 
   test("orchestrator description defaults when not provided", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, { name: "auto-desc-orchestrator" });
 
@@ -205,7 +58,7 @@ describe("createOrchestratorAgent", () => {
 
   test("orchestrator uses custom description when provided", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, {
       name: "custom-orchestrator",
@@ -218,7 +71,7 @@ describe("createOrchestratorAgent", () => {
 
   test("orchestrator toolNames include routeToAgent and createTask", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, { name: "routing-orchestrator" });
 
@@ -229,7 +82,7 @@ describe("createOrchestratorAgent", () => {
 
   test("orchestrator uses custom systemPrompt when provided", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, {
       name: "custom-prompt-orchestrator",
@@ -242,8 +95,8 @@ describe("createOrchestratorAgent", () => {
 
   test("multiple orchestrators can be registered", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
-    registerSpecialistAgent(ctx, "news");
+    registerSpecialist(ctx, "weather");
+    registerSpecialist(ctx, "news");
 
     createOrchestratorAgent(ctx, { name: "orchestrator-a" });
     createOrchestratorAgent(ctx, { name: "orchestrator-b" });
@@ -256,8 +109,8 @@ describe("createOrchestratorAgent", () => {
 
   test("orchestrator stores allowed agents list when provided", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
-    registerSpecialistAgent(ctx, "news");
+    registerSpecialist(ctx, "weather");
+    registerSpecialist(ctx, "news");
 
     createOrchestratorAgent(ctx, {
       name: "limited-orchestrator",
@@ -320,7 +173,7 @@ describe("AgentRegistry.getOrchestratorNames", () => {
 describe("getOrchestratorAgents", () => {
   test("returns names of all orchestrator agents in registry", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "specialist-a");
+    registerSpecialist(ctx, "specialist-a");
     createOrchestratorAgent(ctx, { name: "orch-main" });
 
     const orchSet = getOrchestratorAgents(ctx.agents);
@@ -330,7 +183,7 @@ describe("getOrchestratorAgents", () => {
 
   test("returns empty set when no orchestrators registered", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     const orchSet = getOrchestratorAgents(ctx.agents);
     expect(orchSet.size).toBe(0);
@@ -338,7 +191,7 @@ describe("getOrchestratorAgents", () => {
 
   test("multiple orchestrators all appear in set", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
     createOrchestratorAgent(ctx, { name: "orch-a" });
     createOrchestratorAgent(ctx, { name: "orch-b" });
 
@@ -364,7 +217,7 @@ describe("executeTask – error paths", () => {
 
   test("returns error when delegating to an orchestrator agent", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
     createOrchestratorAgent(ctx, { name: "main-orch" });
 
     const result = await executeTask(ctx, "main-orch", "what is the weather?");
@@ -393,7 +246,7 @@ describe("executeTask – error paths", () => {
 
   test("returns error when delegation depth is exceeded", async () => {
     const ctx = makeCtx({ maxDelegationDepth: 0 });
-    registerSpecialistAgent(ctx, "specialist");
+    registerSpecialist(ctx, "specialist");
 
     // Simulate being at depth 0 already (which meets the >= check for maxDepth 0)
     const delegCtx = {
@@ -411,7 +264,7 @@ describe("executeTask – error paths", () => {
 
   test("returns error on self-delegation (agent delegates to itself)", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "specialist");
+    registerSpecialist(ctx, "specialist");
 
     // Simulate a context where "specialist" is already the last in chain
     const delegCtx = {
@@ -429,8 +282,8 @@ describe("executeTask – error paths", () => {
 
   test("returns error on circular delegation", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "agent-a");
-    registerSpecialistAgent(ctx, "agent-b");
+    registerSpecialist(ctx, "agent-a");
+    registerSpecialist(ctx, "agent-b");
 
     // Simulate chain: agent-a -> agent-b -> (trying agent-a again)
     const delegCtx = {
@@ -598,7 +451,7 @@ describe("Event propagation via delegationStore", () => {
 
   test("executeTask emits delegate:start and delegate:end on the bus", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "news");
+    registerSpecialist(ctx, "news");
 
     const bus = new AgentEventBus();
     const events: string[] = [];
@@ -616,7 +469,7 @@ describe("Event propagation via delegationStore", () => {
 
   test("delegate:start event contains from, to, and query fields", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "finance");
+    registerSpecialist(ctx, "finance");
 
     const bus = new AgentEventBus();
     const startEvents: Array<Record<string, unknown>> = [];
@@ -661,8 +514,8 @@ describe("Event propagation via delegationStore", () => {
 describe("Multiple orchestrator support", () => {
   test("two orchestrators can be registered simultaneously", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
-    registerSpecialistAgent(ctx, "news");
+    registerSpecialist(ctx, "weather");
+    registerSpecialist(ctx, "news");
 
     createOrchestratorAgent(ctx, { name: "orch-1" });
     createOrchestratorAgent(ctx, { name: "orch-2" });
@@ -675,7 +528,7 @@ describe("Multiple orchestrator support", () => {
 
   test("each orchestrator is prevented from being a delegation target", async () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
+    registerSpecialist(ctx, "weather");
 
     createOrchestratorAgent(ctx, { name: "orch-primary" });
     createOrchestratorAgent(ctx, { name: "orch-secondary" });
@@ -691,9 +544,9 @@ describe("Multiple orchestrator support", () => {
 
   test("orchestrators scoped to different allowed agent sets", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "weather");
-    registerSpecialistAgent(ctx, "news");
-    registerSpecialistAgent(ctx, "finance");
+    registerSpecialist(ctx, "weather");
+    registerSpecialist(ctx, "news");
+    registerSpecialist(ctx, "finance");
 
     const orchWeather = createOrchestratorAgent(ctx, {
       name: "orch-weather",
@@ -714,7 +567,7 @@ describe("Multiple orchestrator support", () => {
 describe("Delegation depth enforcement", () => {
   test("custom maxDelegationDepth of 1 blocks second-level delegation", async () => {
     const ctx = makeCtx({ maxDelegationDepth: 1 });
-    registerSpecialistAgent(ctx, "level1");
+    registerSpecialist(ctx, "level1");
 
     // Simulate being at depth 1 already — next call would be depth 1, which
     // meets the >= check for maxDelegationDepth of 1
@@ -729,7 +582,7 @@ describe("Delegation depth enforcement", () => {
 
   test("depth limit error message includes the delegation chain", async () => {
     const ctx = makeCtx({ maxDelegationDepth: 2 });
-    registerSpecialistAgent(ctx, "target");
+    registerSpecialist(ctx, "target");
 
     const delegCtx = {
       chain: ["orchestrator", "agent-a"],
@@ -815,7 +668,7 @@ describe("AgentRegistry prompt resolution", () => {
 describe("createOrchestratorAgent return value", () => {
   test("returns an AgentRegistration object matching what was registered", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "specialist");
+    registerSpecialist(ctx, "specialist");
 
     const returned = createOrchestratorAgent(ctx, {
       name: "returned-orch",
@@ -833,7 +686,7 @@ describe("createOrchestratorAgent return value", () => {
 
   test("createOrchestrator with autonomous:false stores the flag implicitly (no error)", () => {
     const ctx = makeCtx();
-    registerSpecialistAgent(ctx, "specialist");
+    registerSpecialist(ctx, "specialist");
 
     // autonomous is an internal parameter; this should not throw
     expect(() =>
