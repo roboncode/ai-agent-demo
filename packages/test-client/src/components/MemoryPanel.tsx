@@ -117,55 +117,62 @@ const MemoryPanel: Component = () => {
   ];
 
   return (
-    <div class="space-y-4">
-      <h2 class="text-xl font-semibold">Memory</h2>
-
-      <div class="space-y-2">
-        <p class="text-sm text-gray-400">Quick Actions</p>
-        <div class="flex flex-wrap gap-2">
-          <For each={quickActions}>
-            {(qa) => (
-              <button
-                class={`rounded px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                  qa.color === "red"
-                    ? "bg-red-900/50 border-red-800 text-red-300 hover:bg-red-800/50"
-                    : activeAction() === qa.label
-                      ? "bg-blue-600 border-blue-500 text-white"
-                      : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-                }`}
-                onClick={() => run(qa.label, qa.action)}
-                disabled={loading()}
-              >
-                {loading() && activeAction() === qa.label ? "Running..." : qa.label}
-              </button>
-            )}
-          </For>
+    <div class="flex-1 overflow-auto panel-scroll">
+      <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
+          <h2 class="font-display text-xl font-semibold text-heading">Memory</h2>
+          <p class="text-sm text-secondary mt-1">Manage key-value memory entries across namespaces</p>
         </div>
+
+        <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+          <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">Quick Actions</div>
+          <div class="flex flex-wrap gap-2">
+            <For each={quickActions}>
+              {(qa) => (
+                <button
+                  class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
+                    qa.color === "red"
+                      ? "bg-danger/10 text-danger border-danger/20 hover:bg-danger/20"
+                      : activeAction() === qa.label
+                        ? "bg-accent text-root border-accent"
+                        : "bg-raised text-primary border-border hover:border-accent/30"
+                  }`}
+                  onClick={() => run(qa.label, qa.action)}
+                  disabled={loading()}
+                >
+                  {loading() && activeAction() === qa.label ? "Running..." : qa.label}
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+
+        <Show when={entries().length > 0}>
+          <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">{entries().length} Entries in "default"</div>
+            <div class="space-y-2">
+              <For each={entries()}>
+                {(entry) => (
+                  <div class="flex items-center gap-2 bg-surface rounded-lg border border-border px-4 py-3 text-sm">
+                    <span class="font-medium text-accent">{entry.key}</span>
+                    <span class="text-secondary truncate">
+                      {JSON.stringify(entry.value)}
+                    </span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        {error() && <p class="text-sm text-danger">{error()}</p>}
+        <Show when={result()}>
+          <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">Result: {activeAction()}</div>
+            <JsonView data={result()} />
+          </div>
+        </Show>
       </div>
-
-      <Show when={entries().length > 0}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">{entries().length} entries in "default"</p>
-          <For each={entries()}>
-            {(entry) => (
-              <div class="flex items-center gap-2 rounded bg-gray-900 px-3 py-2 text-sm border border-gray-800">
-                <span class="font-medium text-blue-400">{entry.key}</span>
-                <span class="text-gray-500 truncate">
-                  {JSON.stringify(entry.value)}
-                </span>
-              </div>
-            )}
-          </For>
-        </div>
-      </Show>
-
-      {error() && <p class="text-sm text-red-400">{error()}</p>}
-      <Show when={result()}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Result: {activeAction()}</p>
-          <JsonView data={result()} />
-        </div>
-      </Show>
     </div>
   );
 };

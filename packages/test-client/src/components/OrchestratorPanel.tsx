@@ -173,17 +173,19 @@ const OrchestratorPanel: Component = () => {
   }
 
   return (
-    <div class="flex gap-4 h-[calc(100vh-10rem)]">
-      <div class="flex flex-1 flex-col">
-        <div class="mb-2 flex items-center gap-2">
-          <span class="text-sm font-medium text-gray-300">Orchestrator</span>
+    <div class="flex-1 flex overflow-hidden">
+      {/* Left: main orchestrator content */}
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header bar */}
+        <div class="px-6 py-4 border-b border-border-subtle flex items-center gap-3">
+          <h2 class="font-display text-lg font-semibold text-heading">Orchestrator</h2>
           <Show when={conversationId()}>
-            <span class="text-xs font-mono text-gray-500">
+            <span class="text-[10px] font-mono text-muted truncate max-w-[180px]">
               {conversationId()}
             </span>
           </Show>
           <button
-            class="ml-auto rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600"
+            class="rounded-md bg-raised px-3 py-2 text-sm font-medium text-primary border border-border hover:border-accent/30 transition-colors disabled:opacity-40 ml-auto shrink-0"
             onClick={resetChat}
           >
             New Chat
@@ -192,18 +194,20 @@ const OrchestratorPanel: Component = () => {
 
         {/* Quick test buttons (shown when no messages) */}
         <Show when={messages().length === 0}>
-          <div class="mb-3 space-y-2">
-            <p class="text-sm text-gray-500">Click to test orchestrator behavior:</p>
+          <div class="px-6 py-4 border-b border-border-subtle space-y-3">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Click to test orchestrator behavior
+            </span>
             <div class="flex flex-wrap gap-2">
               <For each={quickTests}>
                 {(test) => (
                   <button
-                    class={`rounded px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
+                    class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
                       test.planMode
-                        ? "bg-amber-900/50 border-amber-800 text-amber-300 hover:bg-amber-800/50"
+                        ? "bg-warning/10 border-warning/20 text-warning hover:bg-warning/20"
                         : test.autonomous === false
-                          ? "bg-purple-900/50 border-purple-800 text-purple-300 hover:bg-purple-800/50"
-                          : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                          ? "bg-purple/10 border-purple/20 text-purple hover:bg-purple/20"
+                          : "bg-raised border-border text-primary hover:border-accent/30"
                     }`}
                     onClick={() => runQuickTest(test)}
                     disabled={streaming()}
@@ -213,14 +217,15 @@ const OrchestratorPanel: Component = () => {
                 )}
               </For>
             </div>
-            <p class="text-xs text-gray-600">
-              Gray = autonomous, Amber = plan mode (needs approval), Purple = non-autonomous (shows plan)
+            <p class="text-xs text-muted">
+              Default = autonomous &middot; Amber = plan mode (needs approval) &middot; Purple = non-autonomous (shows plan)
             </p>
           </div>
         </Show>
 
+        {/* Request info */}
         <Show when={orchestratorSystem()}>
-          <div class="mb-2">
+          <div class="px-6 py-3 border-b border-border-subtle">
             <RequestInfo
               agent="orchestrator"
               system={orchestratorSystem()}
@@ -228,59 +233,62 @@ const OrchestratorPanel: Component = () => {
           </div>
         </Show>
 
-        <div class="flex-1 overflow-auto space-y-2 rounded bg-gray-900 p-3 border border-gray-800">
+        {/* Scrollable message area */}
+        <div class="flex-1 overflow-auto panel-scroll p-4 space-y-3">
           <For each={messages()}>
             {(msg) => (
               <div
-                class={`rounded px-3 py-2 text-sm ${
+                class={`rounded-lg px-4 py-3 text-sm ${
                   msg.role === "user"
-                    ? "bg-blue-950 border border-blue-800 ml-12"
-                    : "bg-gray-800 border border-gray-700 mr-12"
+                    ? "bg-accent/8 border border-accent/15 ml-12"
+                    : "bg-surface border border-border mr-12"
                 }`}
               >
-                <span class="text-xs text-gray-500 block mb-1">{msg.role}</span>
-                <p class="whitespace-pre-wrap">{msg.content}</p>
+                <span class="text-[10px] font-semibold uppercase tracking-widest text-muted block mb-1">{msg.role}</span>
+                <p class="whitespace-pre-wrap text-primary">{msg.content}</p>
               </div>
             )}
           </For>
 
           <Show when={currentText()}>
-            <div class="rounded px-3 py-2 text-sm bg-gray-800 border border-gray-700 mr-12 animate-pulse">
-              <span class="text-xs text-gray-500 block mb-1">assistant</span>
-              <p class="whitespace-pre-wrap">{currentText()}</p>
+            <div class="bg-surface border border-border rounded-lg px-4 py-3 text-sm mr-12 animate-pulse">
+              <span class="text-[10px] font-semibold uppercase tracking-widest text-muted block mb-1">assistant</span>
+              <p class="whitespace-pre-wrap text-primary">{currentText()}</p>
             </div>
           </Show>
 
           <Show when={pendingPlan()}>
-            <div class="rounded bg-amber-950 border border-amber-700 p-3 space-y-2">
-              <p class="text-sm font-medium text-amber-300">
+            <div class="bg-warning/5 border border-warning/20 rounded-lg p-4 space-y-3">
+              <p class="text-sm font-semibold text-warning font-display">
                 Pending Plan ({pendingPlan()!.length} tasks)
               </p>
-              <For each={pendingPlan()!}>
-                {(task, i) => (
-                  <div class="rounded bg-amber-900/50 px-3 py-2 text-sm">
-                    <span class="text-amber-300 font-medium">
-                      Task {i() + 1}:
-                    </span>{" "}
-                    <span class="text-amber-100">{task.agent}</span>
-                    <p class="text-amber-200/80 mt-1">{task.query}</p>
-                    <Show when={task.skills?.length}>
-                      <p class="text-xs text-amber-400 mt-1">
-                        Skills: {task.skills!.join(", ")}
-                      </p>
-                    </Show>
-                  </div>
-                )}
-              </For>
-              <div class="flex gap-2">
+              <div class="space-y-2">
+                <For each={pendingPlan()!}>
+                  {(task, i) => (
+                    <div class="bg-warning/8 rounded-md px-3 py-2 text-sm">
+                      <span class="text-warning font-medium font-mono">
+                        Task {i() + 1}:
+                      </span>{" "}
+                      <span class="text-primary">{task.agent}</span>
+                      <p class="text-secondary mt-1">{task.query}</p>
+                      <Show when={task.skills?.length}>
+                        <p class="text-xs text-warning/70 mt-1 font-mono">
+                          Skills: {task.skills!.join(", ")}
+                        </p>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+              </div>
+              <div class="flex gap-2 pt-1">
                 <button
-                  class="rounded bg-green-600 px-4 py-2 text-sm font-medium hover:bg-green-500"
+                  class="rounded-md bg-success/10 px-3 py-2 text-sm font-medium text-success border border-success/20 hover:bg-success/20 transition-colors disabled:opacity-40"
                   onClick={approvePlan}
                 >
                   Approve & Execute
                 </button>
                 <button
-                  class="rounded bg-red-700 px-4 py-2 text-sm font-medium hover:bg-red-600"
+                  class="rounded-md bg-danger/10 px-3 py-2 text-sm font-medium text-danger border border-danger/20 hover:bg-danger/20 transition-colors disabled:opacity-40"
                   onClick={rejectPlan}
                 >
                   Reject
@@ -290,19 +298,22 @@ const OrchestratorPanel: Component = () => {
           </Show>
 
           <Show when={statusText()}>
-            <div class="flex items-center gap-2 text-xs text-gray-500">
+            <div class="flex items-center gap-2 text-xs text-muted">
               <StatusBadge event="status" />
               {statusText()}
             </div>
           </Show>
         </div>
 
-        {error() && <p class="mt-1 text-sm text-red-400">{error()}</p>}
+        {error() && <p class="px-6 py-2 text-sm text-danger">{error()}</p>}
       </div>
 
-      {/* Event log sidebar */}
-      <div class="w-[40rem] shrink-0">
-        <p class="mb-2 text-sm text-gray-400">Event Log ({events().length})</p>
+      {/* Right: event log sidebar */}
+      <div class="w-[480px] shrink-0 flex flex-col border-l border-border bg-surface/50">
+        <div class="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
+          <span class="text-xs font-medium text-secondary">Event Log</span>
+          <span class="text-[10px] font-mono text-muted">{events().length}</span>
+        </div>
         <EventLog entries={events()} />
       </div>
     </div>

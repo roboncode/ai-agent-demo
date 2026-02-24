@@ -10,37 +10,45 @@ interface Props {
 
 const RequestInfo: Component<Props> = (props) => {
   return (
-    <div class="rounded border border-gray-800 bg-gray-900/50 p-3 space-y-2 text-sm">
+    <div class="rounded-lg border border-border bg-surface p-4 space-y-3 text-sm">
       <Show when={props.agent}>
-        <div>
-          <span class="text-gray-500">Agent:</span>{" "}
-          <span class="text-blue-400 font-medium">{props.agent}</span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Agent
+          </span>
+          <span class="text-accent font-mono text-xs">{props.agent}</span>
           <Show when={props.format}>
-            <span class="text-gray-600 ml-2">({props.format})</span>
+            <span class="text-[10px] text-muted font-mono">({props.format})</span>
           </Show>
         </div>
       </Show>
       <Show when={props.tools?.length}>
-        <div>
-          <span class="text-gray-500">Tools:</span>{" "}
-          <span class="text-purple-400">{props.tools!.join(", ")}</span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Tools
+          </span>
+          <span class="text-purple font-mono text-xs">{props.tools!.join(", ")}</span>
         </div>
       </Show>
       <Show when={props.system}>
-        <div>
-          <span class="text-gray-500 block mb-1">System Prompt:</span>
-          <div class="rounded bg-gray-950 px-3 py-2 text-xs text-gray-400 font-mono whitespace-pre-wrap max-h-32 overflow-auto border border-gray-800">
+        <details>
+          <summary class="text-[10px] font-semibold uppercase tracking-widest text-muted cursor-pointer hover:text-secondary select-none">
+            System Prompt
+          </summary>
+          <pre class="mt-2 bg-input rounded-md px-3 py-2 text-[11px] leading-relaxed text-secondary font-mono whitespace-pre-wrap max-h-48 overflow-auto panel-scroll">
             {props.system}
-          </div>
-        </div>
+          </pre>
+        </details>
       </Show>
       <Show when={props.prompt}>
-        <div>
-          <span class="text-gray-500 block mb-1">User Prompt:</span>
-          <div class="rounded bg-blue-950/50 px-3 py-2 text-xs text-blue-200 font-mono whitespace-pre-wrap border border-blue-900">
+        <details>
+          <summary class="text-[10px] font-semibold uppercase tracking-widest text-muted cursor-pointer hover:text-secondary select-none">
+            User Prompt
+          </summary>
+          <pre class="mt-2 bg-info/5 border border-info/10 rounded-md px-3 py-2 text-[11px] leading-relaxed text-info/80 font-mono whitespace-pre-wrap max-h-32 overflow-auto panel-scroll">
             {props.prompt}
-          </div>
-        </div>
+          </pre>
+        </details>
       </Show>
     </div>
   );

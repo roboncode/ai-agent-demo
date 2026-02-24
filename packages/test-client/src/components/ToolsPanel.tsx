@@ -57,54 +57,61 @@ const ToolsPanel: Component = () => {
   }
 
   return (
-    <div class="space-y-4">
-      <h2 class="text-xl font-semibold">Tools</h2>
-
-      <Show when={tools().length > 0}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">{tools().length} tools registered</p>
-          <For each={tools()}>
-            {(t) => (
-              <div class="rounded bg-gray-900 px-3 py-2 text-sm border border-gray-800">
-                <span class="font-medium text-blue-400">{t.name}</span>
-                <span class="text-gray-500 ml-2">{t.description}</span>
-                <Show when={t.category}>
-                  <span class="ml-2 text-xs text-gray-600">({t.category})</span>
-                </Show>
-              </div>
-            )}
-          </For>
+    <div class="flex-1 overflow-auto panel-scroll">
+      <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
+          <h2 class="font-display text-xl font-semibold text-heading">Tools</h2>
+          <p class="text-sm text-secondary mt-1">Browse registered tools and run quick tests</p>
         </div>
-      </Show>
 
-      <div class="space-y-2">
-        <p class="text-sm text-gray-400">Quick Tests</p>
-        <div class="flex flex-wrap gap-2">
-          <For each={quickTests}>
-            {(test) => (
-              <button
-                class={`rounded px-3 py-2 text-sm font-medium border transition-colors ${
-                  activeTest() === test.label
-                    ? "bg-blue-600 border-blue-500 text-white"
-                    : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-                } disabled:opacity-50`}
-                onClick={() => runQuickTest(test)}
-                disabled={loading()}
-              >
-                {loading() && activeTest() === test.label ? "Running..." : test.label}
-              </button>
-            )}
-          </For>
+        <Show when={tools().length > 0}>
+          <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">{tools().length} Tools Registered</div>
+            <div class="space-y-2">
+              <For each={tools()}>
+                {(t) => (
+                  <div class="bg-surface rounded-lg border border-border px-4 py-3 text-sm">
+                    <span class="font-medium text-accent">{t.name}</span>
+                    <span class="text-secondary ml-2">{t.description}</span>
+                    <Show when={t.category}>
+                      <span class="ml-2 text-xs text-muted">({t.category})</span>
+                    </Show>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+          <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">Quick Tests</div>
+          <div class="flex flex-wrap gap-2">
+            <For each={quickTests}>
+              {(test) => (
+                <button
+                  class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
+                    activeTest() === test.label
+                      ? "bg-accent text-root border-accent"
+                      : "bg-raised text-primary border-border hover:border-accent/30"
+                  }`}
+                  onClick={() => runQuickTest(test)}
+                  disabled={loading()}
+                >
+                  {loading() && activeTest() === test.label ? "Running..." : test.label}
+                </button>
+              )}
+            </For>
+          </div>
         </div>
+
+        {error() && <p class="text-sm text-danger">{error()}</p>}
+        <Show when={result()}>
+          <div class="bg-surface rounded-lg border border-border p-4 space-y-3">
+            <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">Result: {activeTest()}</div>
+            <JsonView data={result()} />
+          </div>
+        </Show>
       </div>
-
-      {error() && <p class="text-sm text-red-400">{error()}</p>}
-      <Show when={result()}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Result: {activeTest()}</p>
-          <JsonView data={result()} />
-        </div>
-      </Show>
     </div>
   );
 };

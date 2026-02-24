@@ -24,19 +24,28 @@ const HealthPanel: Component = () => {
   checkHealth();
 
   return (
-    <div class="space-y-4">
-      <h2 class="text-xl font-semibold">Health Check</h2>
-      <button
-        class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50"
-        onClick={checkHealth}
-        disabled={loading()}
-      >
-        {loading() ? "Checking..." : "Refresh"}
-      </button>
-      {error() && <p class="text-sm text-red-400">{error()}</p>}
-      <Show when={result()}>
-        <JsonView data={result()} />
-      </Show>
+    <div class="flex-1 overflow-auto panel-scroll">
+      <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
+          <h2 class="font-display text-xl font-semibold text-heading">Health Check</h2>
+          <p class="text-sm text-secondary mt-1">Monitor server status and connectivity</p>
+        </div>
+
+        <div class="bg-surface rounded-lg border border-border p-4 space-y-4">
+          <div class="text-[10px] font-semibold uppercase tracking-widest text-muted">Server Status</div>
+          <button
+            class="rounded-md bg-accent px-3 py-2 text-sm font-medium text-root hover:bg-accent-bright transition-colors disabled:opacity-40"
+            onClick={checkHealth}
+            disabled={loading()}
+          >
+            {loading() ? "Checking..." : "Refresh"}
+          </button>
+          {error() && <p class="text-sm text-danger">{error()}</p>}
+          <Show when={result()}>
+            <JsonView data={result()} />
+          </Show>
+        </div>
+      </div>
     </div>
   );
 };

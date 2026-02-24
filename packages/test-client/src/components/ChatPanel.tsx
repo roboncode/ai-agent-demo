@@ -130,12 +130,14 @@ const ChatPanel: Component = () => {
   }
 
   return (
-    <div class="flex gap-4 h-[calc(100vh-10rem)]">
-      {/* Chat area */}
-      <div class="flex flex-1 flex-col">
-        <div class="mb-2 flex items-center gap-2">
+    <div class="flex-1 flex overflow-hidden">
+      {/* Left: main chat content */}
+      <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header bar */}
+        <div class="px-6 py-4 border-b border-border-subtle flex items-center gap-3">
+          <h2 class="font-display text-lg font-semibold text-heading">Chat</h2>
           <select
-            class="rounded bg-gray-800 px-3 py-2 text-sm border border-gray-700"
+            class="w-full bg-input rounded-md border border-border px-3 py-2 text-sm text-primary focus:outline-none focus:border-accent/50 font-mono max-w-xs"
             value={selected()}
             onChange={(e) => {
               setSelected(e.currentTarget.value);
@@ -152,30 +154,32 @@ const ChatPanel: Component = () => {
             </For>
           </select>
           <Show when={conversationId()}>
-            <span class="text-xs font-mono text-gray-500">
+            <span class="text-[10px] font-mono text-muted truncate max-w-[180px]">
               {conversationId()}
             </span>
           </Show>
           <button
-            class="ml-auto rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600"
+            class="rounded-md bg-raised px-3 py-2 text-sm font-medium text-primary border border-border hover:border-accent/30 transition-colors disabled:opacity-40 ml-auto shrink-0"
             onClick={resetChat}
           >
             New Chat
           </button>
         </div>
 
-        {/* Starter prompts (shown when no messages) */}
+        {/* Quick actions area */}
         <Show when={chatMessages().length === 0}>
-          <div class="mb-3 space-y-2">
-            <p class="text-sm text-gray-500">Click to start a conversation:</p>
+          <div class="px-6 py-4 border-b border-border-subtle space-y-3">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Click to start a conversation
+            </span>
             <div class="flex flex-wrap gap-2">
               <For each={agentStarters[selected()] ?? defaultStarters}>
                 {(prompt) => (
                   <button
-                    class={`rounded px-3 py-2 text-sm border disabled:opacity-50 ${
+                    class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
                       prompt.toLowerCase().includes("blocked")
-                        ? "bg-red-900/50 border-red-800 text-red-300 hover:bg-red-800/50"
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
+                        ? "bg-danger/10 border-danger/20 text-danger hover:bg-danger/20"
+                        : "bg-raised border-border text-primary hover:border-accent/30"
                     }`}
                     onClick={() => send(prompt)}
                     disabled={streaming()}
@@ -186,7 +190,7 @@ const ChatPanel: Component = () => {
               </For>
             </div>
             <Show when={selected() === "guarded"}>
-              <p class="text-xs text-gray-600">
+              <p class="text-xs text-muted">
                 The guarded agent has a guard hook that blocks any message containing the word "blocked".
                 Try the red button to see the guard reject the request.
               </p>
@@ -194,23 +198,23 @@ const ChatPanel: Component = () => {
           </div>
         </Show>
 
-        {/* Follow-up prompts (shown after first exchange) */}
+        {/* Follow-up prompts */}
         <Show when={chatMessages().length > 0 && !streaming()}>
-          <div class="mb-2 flex flex-wrap gap-2">
+          <div class="px-6 py-3 border-b border-border-subtle flex flex-wrap gap-2">
             <button
-              class="rounded px-2 py-1 text-xs border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"
+              class="rounded-md bg-raised px-3 py-2 text-sm font-medium text-primary border border-border hover:border-accent/30 transition-colors disabled:opacity-40"
               onClick={() => send("Tell me more about that")}
             >
               Tell me more
             </button>
             <button
-              class="rounded px-2 py-1 text-xs border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"
+              class="rounded-md bg-raised px-3 py-2 text-sm font-medium text-primary border border-border hover:border-accent/30 transition-colors disabled:opacity-40"
               onClick={() => send("Can you also check the weather in Berlin?")}
             >
               Also check Berlin weather
             </button>
             <button
-              class="rounded px-2 py-1 text-xs border bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700"
+              class="rounded-md bg-raised px-3 py-2 text-sm font-medium text-primary border border-border hover:border-accent/30 transition-colors disabled:opacity-40"
               onClick={() => send("Now calculate 2^16")}
             >
               Calculate 2^16
@@ -218,8 +222,9 @@ const ChatPanel: Component = () => {
           </div>
         </Show>
 
+        {/* Request info (collapsible) */}
         <Show when={agentSystem()}>
-          <div class="mb-2">
+          <div class="px-6 py-3 border-b border-border-subtle">
             <RequestInfo
               agent={selected()}
               system={agentSystem()}
@@ -227,43 +232,47 @@ const ChatPanel: Component = () => {
           </div>
         </Show>
 
-        <div class="flex-1 overflow-auto space-y-2 rounded bg-gray-900 p-3 border border-gray-800">
+        {/* Scrollable message area */}
+        <div class="flex-1 overflow-auto panel-scroll p-4 space-y-3">
           <For each={chatMessages()}>
             {(msg) => (
               <div
-                class={`rounded px-3 py-2 text-sm ${
+                class={`rounded-lg px-4 py-3 text-sm ${
                   msg.role === "user"
-                    ? "bg-blue-950 border border-blue-800 ml-12"
-                    : "bg-gray-800 border border-gray-700 mr-12"
+                    ? "bg-accent/8 border border-accent/15 ml-12"
+                    : "bg-surface border border-border mr-12"
                 }`}
               >
-                <span class="text-xs text-gray-500 block mb-1">{msg.role}</span>
-                <p class="whitespace-pre-wrap">{msg.content}</p>
+                <span class="text-[10px] font-semibold uppercase tracking-widest text-muted block mb-1">{msg.role}</span>
+                <p class="whitespace-pre-wrap text-primary">{msg.content}</p>
               </div>
             )}
           </For>
 
           <Show when={currentText()}>
-            <div class="rounded px-3 py-2 text-sm bg-gray-800 border border-gray-700 mr-12 animate-pulse">
-              <span class="text-xs text-gray-500 block mb-1">assistant</span>
-              <p class="whitespace-pre-wrap">{currentText()}</p>
+            <div class="bg-surface border border-border rounded-lg px-4 py-3 text-sm mr-12 animate-pulse">
+              <span class="text-[10px] font-semibold uppercase tracking-widest text-muted block mb-1">assistant</span>
+              <p class="whitespace-pre-wrap text-primary">{currentText()}</p>
             </div>
           </Show>
 
           <Show when={statusText()}>
-            <div class="flex items-center gap-2 text-xs text-gray-500">
+            <div class="flex items-center gap-2 text-xs text-muted">
               <StatusBadge event="status" />
               {statusText()}
             </div>
           </Show>
         </div>
 
-        {error() && <p class="mt-1 text-sm text-red-400">{error()}</p>}
+        {error() && <p class="px-6 py-2 text-sm text-danger">{error()}</p>}
       </div>
 
-      {/* Event log sidebar */}
-      <div class="w-[40rem] shrink-0">
-        <p class="mb-2 text-sm text-gray-400">Event Log ({events().length})</p>
+      {/* Right: event log sidebar */}
+      <div class="w-[480px] shrink-0 flex flex-col border-l border-border bg-surface/50">
+        <div class="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
+          <span class="text-xs font-medium text-secondary">Event Log</span>
+          <span class="text-[10px] font-mono text-muted">{events().length}</span>
+        </div>
         <EventLog entries={events()} />
       </div>
     </div>

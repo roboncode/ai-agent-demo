@@ -1,28 +1,30 @@
 import type { Component } from "solid-js";
 
-const colorMap: Record<string, string> = {
-  "text-delta": "bg-green-900 text-green-300",
-  "tool-call": "bg-blue-900 text-blue-300",
-  "tool-result": "bg-cyan-900 text-cyan-300",
-  "agent-start": "bg-purple-900 text-purple-300",
-  "agent-end": "bg-purple-900 text-purple-300",
-  "agent-think": "bg-indigo-900 text-indigo-300",
-  "agent-plan": "bg-amber-900 text-amber-300",
-  status: "bg-yellow-900 text-yellow-300",
-  "session-start": "bg-gray-700 text-gray-300",
-  done: "bg-gray-700 text-gray-300",
-  error: "bg-red-900 text-red-300",
-  cancelled: "bg-red-900 text-red-300",
-  "skill-inject": "bg-pink-900 text-pink-300",
-  "ask-user": "bg-orange-900 text-orange-300",
+const EVENT_STYLES: Record<string, string> = {
+  "session:start": "bg-muted/20 text-muted",
+  "text-delta": "bg-success/12 text-success",
+  "tool-call": "bg-info/12 text-info",
+  "tool-result": "bg-cyan/12 text-cyan",
+  "agent:start": "bg-purple/12 text-purple",
+  "agent:end": "bg-purple/12 text-purple",
+  "agent:think": "bg-accent/12 text-accent",
+  "agent:plan": "bg-warning/12 text-warning",
+  "delegate:start": "bg-accent-dim/15 text-accent-dim",
+  "delegate:end": "bg-accent-dim/15 text-accent-dim",
+  status: "bg-warning/10 text-warning",
+  "skill:inject": "bg-pink/12 text-pink",
+  "ask:user": "bg-orange/12 text-orange",
+  done: "bg-muted/20 text-muted",
+  error: "bg-danger/15 text-danger",
+  cancelled: "bg-danger/15 text-danger",
 };
 
 const StatusBadge: Component<{ event: string }> = (props) => {
-  const cls = () => colorMap[props.event] ?? "bg-gray-800 text-gray-400";
+  const style = () => EVENT_STYLES[props.event] ?? "bg-muted/20 text-muted";
 
   return (
     <span
-      class={`inline-block shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls()}`}
+      class={`inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-medium font-mono leading-none ${style()}`}
     >
       {props.event}
     </span>

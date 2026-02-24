@@ -114,70 +114,85 @@ const GeneratePanel: Component = () => {
   }
 
   return (
-    <div class="space-y-4">
-      <h2 class="text-xl font-semibold">Generate</h2>
-
-      <div class="space-y-2">
-        <p class="text-sm text-gray-400">Quick Tests</p>
-        <div class="flex flex-wrap gap-2">
-          <For each={quickTests}>
-            {(test) => (
-              <button
-                class={`rounded px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                  activeTest()?.label === test.label
-                    ? "bg-blue-600 border-blue-500 text-white"
-                    : test.format === "json"
-                      ? "bg-amber-900/50 border-amber-800 text-amber-300 hover:bg-amber-800/50"
-                      : test.tools?.length
-                        ? "bg-purple-900/50 border-purple-800 text-purple-300 hover:bg-purple-800/50"
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-                }`}
-                onClick={() => runTest(test)}
-                disabled={loading()}
-              >
-                {loading() && activeTest()?.label === test.label ? "Running..." : test.label}
-              </button>
-            )}
-          </For>
+    <div class="flex-1 overflow-auto panel-scroll">
+      <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
+          <h2 class="font-display text-xl font-semibold text-heading">Generate</h2>
+          <p class="text-sm text-secondary mt-1">Low-level generate endpoint with tool and format options</p>
         </div>
-        <p class="text-xs text-gray-600">
-          Gray = plain prompt, Purple = with tools, Amber = JSON format
-        </p>
-      </div>
 
-      {error() && <p class="text-sm text-red-400">{error()}</p>}
-
-      <Show when={activeTest()}>
-        <RequestInfo
-          format={activeTest()!.format}
-          system={activeTest()!.system}
-          prompt={activeTest()!.message}
-          tools={activeTest()!.tools}
-        />
-      </Show>
-
-      <Show when={response()}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Response</p>
-          <div class="rounded bg-gray-900 p-3 text-sm border border-gray-800 whitespace-pre-wrap">
-            {response()}
+        <div class="space-y-3">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Quick Tests
+          </span>
+          <div class="flex flex-wrap gap-2">
+            <For each={quickTests}>
+              {(test) => (
+                <button
+                  class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
+                    activeTest()?.label === test.label
+                      ? "bg-accent text-root border-accent"
+                      : test.format === "json"
+                        ? "bg-warning/10 border-warning/20 text-warning hover:bg-warning/20"
+                        : test.tools?.length
+                          ? "bg-purple/10 border-purple/20 text-purple hover:bg-purple/20"
+                          : "bg-raised border-border text-primary hover:border-accent/30"
+                  }`}
+                  onClick={() => runTest(test)}
+                  disabled={loading()}
+                >
+                  {loading() && activeTest()?.label === test.label ? "Running..." : test.label}
+                </button>
+              )}
+            </For>
           </div>
+          <p class="text-xs text-muted">
+            Default = plain prompt &middot; Purple = with tools &middot; Amber = JSON format
+          </p>
         </div>
-      </Show>
 
-      <Show when={jsonResult()}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">JSON Result</p>
-          <JsonView data={jsonResult()} />
-        </div>
-      </Show>
+        {error() && <p class="text-sm text-danger">{error()}</p>}
 
-      <Show when={events().length > 0}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Event Log ({events().length})</p>
-          <EventLog entries={events()} />
-        </div>
-      </Show>
+        <Show when={activeTest()}>
+          <RequestInfo
+            format={activeTest()!.format}
+            system={activeTest()!.system}
+            prompt={activeTest()!.message}
+            tools={activeTest()!.tools}
+          />
+        </Show>
+
+        <Show when={response()}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Response
+            </span>
+            <div class="bg-surface rounded-lg border border-border p-4 text-sm text-primary whitespace-pre-wrap">
+              {response()}
+            </div>
+          </div>
+        </Show>
+
+        <Show when={jsonResult()}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              JSON Result
+            </span>
+            <JsonView data={jsonResult()} />
+          </div>
+        </Show>
+
+        <Show when={events().length > 0}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Event Log ({events().length})
+            </span>
+            <div class="bg-surface rounded-lg border border-border overflow-hidden">
+              <EventLog entries={events()} />
+            </div>
+          </div>
+        </Show>
+      </div>
     </div>
   );
 };

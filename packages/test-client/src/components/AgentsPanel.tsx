@@ -110,81 +110,98 @@ const AgentsPanel: Component = () => {
   }
 
   return (
-    <div class="space-y-4">
-      <h2 class="text-xl font-semibold">Agents</h2>
-
-      <Show when={agents().length > 0}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">{agents().length} agents registered</p>
-          <For each={agents()}>
-            {(a) => (
-              <div class="rounded bg-gray-900 px-3 py-2 text-sm border border-gray-800">
-                <span class="font-medium text-blue-400">{a.name}</span>
-                <span class="text-gray-500 ml-2">{a.description}</span>
-                <span class="text-xs text-gray-600 ml-2">
-                  [{a.toolNames.join(", ")}]
-                </span>
-              </div>
-            )}
-          </For>
+    <div class="flex-1 overflow-auto panel-scroll">
+      <div class="max-w-5xl mx-auto p-6 space-y-6">
+        <div>
+          <h2 class="font-display text-xl font-semibold text-heading">Agents</h2>
+          <p class="text-sm text-secondary mt-1">Registered agents and quick prompt testing</p>
         </div>
-      </Show>
 
-      <div class="space-y-2">
-        <p class="text-sm text-gray-400">Quick Prompts</p>
-        <div class="flex flex-wrap gap-2">
-          <For each={quickPrompts}>
-            {(qp) => (
-              <button
-                class={`rounded px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-50 ${
-                  activePrompt()?.label === qp.label
-                    ? "bg-blue-600 border-blue-500 text-white"
-                    : qp.label.includes("Blocked")
-                      ? "bg-red-900/50 border-red-800 text-red-300 hover:bg-red-800/50"
-                      : qp.format === "json"
-                        ? "bg-amber-900/50 border-amber-800 text-amber-300 hover:bg-amber-800/50"
-                        : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700"
-                }`}
-                onClick={() => runPrompt(qp)}
-                disabled={loading()}
-              >
-                {loading() && activePrompt()?.label === qp.label ? "Running..." : qp.label}
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
+        <Show when={agents().length > 0}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {agents().length} agents registered
+            </span>
+            <div class="space-y-1.5">
+              <For each={agents()}>
+                {(a) => (
+                  <div class="bg-surface rounded-lg border border-border px-4 py-3 text-sm flex items-baseline gap-2">
+                    <span class="font-medium text-accent font-mono">{a.name}</span>
+                    <span class="text-secondary">{a.description}</span>
+                    <span class="text-xs text-muted font-mono ml-auto shrink-0">
+                      [{a.toolNames.join(", ")}]
+                    </span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
 
-      {error() && <p class="text-sm text-red-400">{error()}</p>}
-
-      <Show when={activePrompt()}>
-        <RequestInfo
-          agent={activePrompt()!.agent}
-          format={activePrompt()!.format}
-          system={agentSystem()}
-          prompt={activePrompt()!.message}
-        />
-      </Show>
-
-      <Show when={response()}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Response</p>
-          <div class="rounded bg-gray-900 p-3 text-sm border border-gray-800 whitespace-pre-wrap">
-            {response()}
+        <div class="space-y-3">
+          <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+            Quick Prompts
+          </span>
+          <div class="flex flex-wrap gap-2">
+            <For each={quickPrompts}>
+              {(qp) => (
+                <button
+                  class={`rounded-md px-3 py-2 text-sm font-medium border transition-colors disabled:opacity-40 ${
+                    activePrompt()?.label === qp.label
+                      ? "bg-accent px-3 py-2 text-root border-accent"
+                      : qp.label.includes("Blocked")
+                        ? "bg-danger/10 border-danger/20 text-danger hover:bg-danger/20"
+                        : qp.format === "json"
+                          ? "bg-warning/10 border-warning/20 text-warning hover:bg-warning/20"
+                          : "bg-raised border-border text-primary hover:border-accent/30"
+                  }`}
+                  onClick={() => runPrompt(qp)}
+                  disabled={loading()}
+                >
+                  {loading() && activePrompt()?.label === qp.label ? "Running..." : qp.label}
+                </button>
+              )}
+            </For>
           </div>
         </div>
-      </Show>
 
-      <Show when={jsonResult()}>
-        <JsonView data={jsonResult()} />
-      </Show>
+        {error() && <p class="text-sm text-danger">{error()}</p>}
 
-      <Show when={events().length > 0}>
-        <div class="space-y-1">
-          <p class="text-sm text-gray-400">Event Log ({events().length})</p>
-          <EventLog entries={events()} />
-        </div>
-      </Show>
+        <Show when={activePrompt()}>
+          <RequestInfo
+            agent={activePrompt()!.agent}
+            format={activePrompt()!.format}
+            system={agentSystem()}
+            prompt={activePrompt()!.message}
+          />
+        </Show>
+
+        <Show when={response()}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Response
+            </span>
+            <div class="bg-surface rounded-lg border border-border p-4 text-sm text-primary whitespace-pre-wrap">
+              {response()}
+            </div>
+          </div>
+        </Show>
+
+        <Show when={jsonResult()}>
+          <JsonView data={jsonResult()} />
+        </Show>
+
+        <Show when={events().length > 0}>
+          <div class="space-y-2">
+            <span class="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              Event Log ({events().length})
+            </span>
+            <div class="bg-surface rounded-lg border border-border overflow-hidden">
+              <EventLog entries={events()} />
+            </div>
+          </div>
+        </Show>
+      </div>
     </div>
   );
 };

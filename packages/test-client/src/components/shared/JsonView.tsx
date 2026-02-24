@@ -1,10 +1,20 @@
-import type { Component } from "solid-js";
+import { Show, type Component } from "solid-js";
 
 const JsonView: Component<{ data: unknown }> = (props) => {
+  const formatted = () => {
+    try {
+      return JSON.stringify(props.data, null, 2);
+    } catch {
+      return String(props.data);
+    }
+  };
+
   return (
-    <pre class="overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-300 font-mono max-h-96 border border-gray-800">
-      {JSON.stringify(props.data, null, 2)}
-    </pre>
+    <Show when={props.data != null}>
+      <pre class="overflow-auto rounded-lg bg-input border border-border p-4 text-[12px] leading-relaxed text-secondary font-mono max-h-[480px] panel-scroll whitespace-pre-wrap break-all">
+        {formatted()}
+      </pre>
+    </Show>
   );
 };
 
