@@ -9,6 +9,7 @@ import type { PluginContext } from "../context.js";
 
 interface AgentStreamConfig {
   system: string;
+  // AI SDK tool type is opaque and not directly expressible — `any` required here
   tools: Record<string, any>;
   prompt?: string;
   messages?: Array<{ role: "user" | "assistant"; content: string }>;
@@ -110,8 +111,10 @@ export function streamAgentResponse(c: Context, ctx: PluginContext, config: Agen
           ...config.extraDoneData,
         }),
       });
-    } catch (err: any) {
-      if (err.name === "AbortError" || abortSignal?.aborted) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? err.name : undefined;
+      if (errName === "AbortError" || abortSignal?.aborted) {
         await stream.writeSSE({
           id: String(id++),
           event: SSE_EVENTS.CANCELLED,
@@ -121,7 +124,7 @@ export function streamAgentResponse(c: Context, ctx: PluginContext, config: Agen
         await stream.writeSSE({
           id: String(id++),
           event: SSE_EVENTS.ERROR,
-          data: JSON.stringify({ conversationId: config.conversationId, error: err.message }),
+          data: JSON.stringify({ conversationId: config.conversationId, error: message }),
         });
       }
     } finally {

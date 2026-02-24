@@ -25,6 +25,7 @@ export function createGenerateRoutes(ctx: PluginContext) {
         },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     ((c: any) => {
       const format = (c.req.query("format") ?? "json") as "json" | "sse";
       if (format === "sse") return handlers.handleGenerateStream(c);

@@ -22,8 +22,9 @@ export function createSkillsHandlers(ctx: PluginContext) {
       try {
         const skill = await store.createSkill(name, content);
         return c.json(skill, 201);
-      } catch (err: any) {
-        return c.json({ error: err.message }, 400);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 400);
       }
     },
 
@@ -33,8 +34,9 @@ export function createSkillsHandlers(ctx: PluginContext) {
       try {
         const skill = await store.updateSkill(name, content);
         return c.json(skill, 200);
-      } catch (err: any) {
-        return c.json({ error: err.message }, 404);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json({ error: message }, 404);
       }
     },
 

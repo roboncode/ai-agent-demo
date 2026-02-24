@@ -11,6 +11,7 @@ import type { PluginContext } from "../context.js";
 
 interface AgentConfig {
   system: string;
+  // AI SDK tool type is opaque and not directly expressible — `any` required here
   tools: Record<string, any>;
   agentName?: string;
 }
@@ -49,12 +50,16 @@ export async function runAgent(
     for (const step of result.steps) {
       for (const tc of step.toolCalls) {
         if (!BUILT_IN_TOOLS.has(tc.toolName)) {
-          bus.emit(BUS_EVENTS.TOOL_CALL, { agent: config.agentName, tool: tc.toolName, args: (tc as any).input });
+          // AI SDK v6 ToolCall type doesn't expose `.input` directly
+          const tcInput = (tc as unknown as { input: Record<string, unknown> }).input;
+          bus.emit(BUS_EVENTS.TOOL_CALL, { agent: config.agentName, tool: tc.toolName, args: tcInput });
         }
       }
       for (const tr of step.toolResults) {
         if (!BUILT_IN_TOOLS.has(tr.toolName)) {
-          bus.emit(BUS_EVENTS.TOOL_RESULT, { agent: config.agentName, tool: tr.toolName, result: (tr as any).output });
+          // AI SDK v6 ToolResult type doesn't expose `.output` directly
+          const trOutput = (tr as unknown as { output: unknown }).output;
+          bus.emit(BUS_EVENTS.TOOL_RESULT, { agent: config.agentName, tool: tr.toolName, result: trOutput });
         }
       }
     }
@@ -64,15 +69,19 @@ export async function runAgent(
   for (const step of result.steps) {
     for (const tc of step.toolCalls) {
       if (tc.toolName === TOOL_NAMES.CLARIFY) {
-        const input = (tc as any).input ?? {};
+        // AI SDK v6 ToolCall type doesn't expose `.input` directly
+        const input = (tc as unknown as { input: { items?: ClarifyItem[]; questions?: Array<Record<string, unknown>> } }).input;
+        if (!input) continue;
         if (input.items?.length) {
           items.push(...input.items);
         } else if (input.questions?.length) {
           for (const q of input.questions) {
+            const text = (q.question ?? q.text ?? String(q)) as string;
+            const context = q.context as string | undefined;
             items.push({
               type: "question",
-              text: q.question ?? q.text ?? String(q),
-              ...(q.context && { context: q.context }),
+              text,
+              ...(context ? { context } : {}),
             });
           }
         }

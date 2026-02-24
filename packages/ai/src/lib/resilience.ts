@@ -16,6 +16,7 @@ interface ResilienceOptions<T> {
 }
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const NON_RETRYABLE_STATUS_CODES = new Set([400, 401, 403, 404, 422]);
 
 /**
  * Classifies whether an error is retryable.
@@ -36,14 +37,15 @@ export function isRetryableError(error: unknown): boolean {
     const status = Number(statusMatch[1]);
     if (RETRYABLE_STATUS_CODES.has(status)) return true;
     // Non-retryable status codes
-    if (status === 400 || status === 401 || status === 403 || status === 404 || status === 422) return false;
+    if (NON_RETRYABLE_STATUS_CODES.has(status)) return false;
   }
 
   // Check for status property on error object
-  const statusProp = (error as any).status ?? (error as any).statusCode;
+  const errRecord = error as unknown as Record<string, unknown>;
+  const statusProp = errRecord.status ?? errRecord.statusCode;
   if (typeof statusProp === "number") {
     if (RETRYABLE_STATUS_CODES.has(statusProp)) return true;
-    if (statusProp === 400 || statusProp === 401 || statusProp === 403 || statusProp === 404 || statusProp === 422) return false;
+    if (NON_RETRYABLE_STATUS_CODES.has(statusProp)) return false;
   }
 
   // Timeout and network errors
@@ -81,13 +83,13 @@ function computeDelay(attempt: number, baseDelayMs: number, maxDelayMs: number, 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException("Aborted", "AbortError"));
+      reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
       return;
     }
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener("abort", () => {
       clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
+      reject(Object.assign(new Error("Aborted"), { name: "AbortError" }));
     }, { once: true });
   });
 }
@@ -113,8 +115,8 @@ export async function withResilience<T>(opts: ResilienceOptions<T>): Promise<T> 
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await fn(attempt === 0 ? undefined : undefined);
-    } catch (error: any) {
+      return await fn();
+    } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
 
       // Never retry aborts

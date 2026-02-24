@@ -8,7 +8,7 @@ import {
   getOrchestratorAgents,
   type DelegationContext,
 } from "../lib/delegation-context.js";
-import { TOOL_NAMES } from "../lib/constants.js";
+import { TOOL_NAMES, DEFAULTS } from "../lib/constants.js";
 import { BUS_EVENTS, STATUS_CODES } from "../lib/events.js";
 import { emitStatus } from "../lib/emit-status.js";
 import type { PluginContext } from "../context.js";
@@ -162,7 +162,7 @@ export async function executeTask(
     );
 
     bus?.emit(BUS_EVENTS.AGENT_END, { agent });
-    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, 200) });
+    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: result.response.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) });
 
     return {
       agent,
@@ -170,10 +170,10 @@ export async function executeTask(
       result,
       ...(responseSkillNames.length > 0 && { responseSkills: responseSkillNames }),
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    bus?.emit(BUS_EVENTS.AGENT_END, { agent, error: message.slice(0, 200) });
-    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: `Error: ${message.slice(0, 200)}`, error: true });
+    bus?.emit(BUS_EVENTS.AGENT_END, { agent, error: message.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) });
+    bus?.emit(BUS_EVENTS.DELEGATE_END, { from, to: agent, summary: `Error: ${message.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT)}`, error: true });
     return errorResult(agent, query, `Agent execution failed: ${message}`);
   }
 }

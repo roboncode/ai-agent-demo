@@ -66,6 +66,10 @@ export function createMemoryTool(store: MemoryStore, defaultNamespace: string) {
           const deleted = await store.deleteEntry(ns, key);
           return { deleted, key, namespace: ns };
         }
+        default: {
+          const _exhaustive: never = input.action;
+          return { error: `Unknown action: ${_exhaustive}` };
+        }
       }
     },
   });

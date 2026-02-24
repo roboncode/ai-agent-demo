@@ -6,13 +6,13 @@ import type { PromptStore, PromptOverride } from "../interfaces.js";
 export function createPromptStore(dataDir: string): PromptStore {
   const overridesFile = `${dataDir}/prompt-overrides.json`;
 
-  let mutex: Promise<void> = Promise.resolve();
+  let lock: Promise<void> = Promise.resolve();
   function withLock<T>(fn: () => Promise<T>): Promise<T> {
     let result: Promise<T>;
-    mutex = mutex
+    lock = lock
       .then(async () => { result = fn(); await result; })
       .catch(() => {});
-    return mutex.then(() => result!);
+    return lock.then(() => result!);
   }
 
   async function ensureFile() {
@@ -32,7 +32,10 @@ export function createPromptStore(dataDir: string): PromptStore {
       return withLock(async () => {
         await ensureFile();
         const raw = await readFile(overridesFile, "utf-8");
-        const data: Record<string, PromptOverride> = JSON.parse(raw).constructor === Object ? JSON.parse(raw) : {};
+        const parsed: unknown = JSON.parse(raw);
+        const data: Record<string, PromptOverride> = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+          ? parsed as Record<string, PromptOverride>
+          : {};
         const entry: PromptOverride = { prompt, updatedAt: new Date().toISOString() };
         data[name] = entry;
         await writeFile(overridesFile, JSON.stringify(data, null, 2));
@@ -44,7 +47,10 @@ export function createPromptStore(dataDir: string): PromptStore {
       return withLock(async () => {
         await ensureFile();
         const raw = await readFile(overridesFile, "utf-8");
-        const data: Record<string, PromptOverride> = JSON.parse(raw).constructor === Object ? JSON.parse(raw) : {};
+        const parsed: unknown = JSON.parse(raw);
+        const data: Record<string, PromptOverride> = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+          ? parsed as Record<string, PromptOverride>
+          : {};
         if (!data[name]) return false;
         delete data[name];
         await writeFile(overridesFile, JSON.stringify(data, null, 2));

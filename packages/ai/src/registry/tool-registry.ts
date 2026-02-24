@@ -5,6 +5,7 @@ export interface ToolRegistration {
   name: string;
   description: string;
   inputSchema: z.ZodType<any>;
+  // AI SDK tool type is opaque and not directly expressible — `any` required here
   tool: any;
   directExecute?: (input: any) => Promise<any>;
   category?: string;

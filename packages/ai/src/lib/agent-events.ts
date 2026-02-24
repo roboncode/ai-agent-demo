@@ -22,8 +22,8 @@ export class AgentEventBus {
     for (const handler of this.handlers) {
       try {
         handler(event);
-      } catch {
-        // Swallow handler errors — event bus should never break agent flow
+      } catch (err) {
+        console.error("[agent-events] handler error:", err);
       }
     }
   }

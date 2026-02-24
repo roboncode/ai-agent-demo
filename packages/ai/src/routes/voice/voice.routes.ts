@@ -4,6 +4,14 @@ import type { PluginContext } from "../../context.js";
 import { speakRequestSchema, transcribeResponseSchema, speakersResponseSchema } from "./voice.schemas.js";
 import { generateConversationId } from "../../registry/handler-factories.js";
 
+const AUDIO_MIME_TYPES: Record<string, string> = {
+  mp3: "audio/mpeg",
+  opus: "audio/opus",
+  wav: "audio/wav",
+  aac: "audio/aac",
+  flac: "audio/flac",
+};
+
 export function createVoiceRoutes(ctx: PluginContext) {
   const router = new OpenAPIHono();
 
@@ -22,6 +30,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
         503: { description: "Voice provider not configured", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       let provider;
       try { provider = requireVoice(); } catch { return c.json({ error: "Voice provider not configured." }, 503); }
@@ -58,6 +67,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
         503: { description: "Voice provider not configured", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const providerName = c.req.query("provider") || undefined;
       let provider;
@@ -78,9 +88,10 @@ export function createVoiceRoutes(ctx: PluginContext) {
           language: language ?? undefined,
           prompt: prompt ?? undefined,
         });
-      } catch (err: any) {
-        console.error("[voice/transcribe] Transcription failed:", err.message);
-        return c.json({ error: err.message || "Transcription failed" }, 502);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[voice/transcribe] Transcription failed:", message);
+        return c.json({ error: message || "Transcription failed" }, 502);
       }
 
       let audioId: string | undefined;
@@ -104,6 +115,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
         503: { description: "Voice provider not configured", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       let provider;
       try { provider = requireVoice(); } catch { return c.json({ error: "Voice provider not configured." }, 503); }
@@ -113,8 +125,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
       const audioFormat = format ?? "mp3";
       const audioStream = await provider.speak(text, { speaker, format: audioFormat, speed, model });
 
-      const mimeTypes: Record<string, string> = { mp3: "audio/mpeg", opus: "audio/opus", wav: "audio/wav", aac: "audio/aac", flac: "audio/flac" };
-      const mimeType = mimeTypes[audioFormat] ?? "audio/mpeg";
+      const mimeType = AUDIO_MIME_TYPES[audioFormat] ?? "audio/mpeg";
 
       if (save) {
         const chunks: Uint8Array[] = [];
@@ -153,6 +164,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
         503: { description: "Voice provider not configured", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const sttProviderName = c.req.query("provider") || undefined;
       let provider;
@@ -174,9 +186,10 @@ export function createVoiceRoutes(ctx: PluginContext) {
       let transcription;
       try {
         transcription = await provider.transcribe(audioFile);
-      } catch (err: any) {
-        console.error("[voice/converse] Transcription failed:", err.message);
-        return c.json({ error: err.message || "Transcription failed" }, 502);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[voice/converse] Transcription failed:", message);
+        return c.json({ error: message || "Transcription failed" }, 502);
       }
       if (!transcription.text.trim()) return c.json({ error: "Could not transcribe audio." }, 400);
 
@@ -196,11 +209,9 @@ export function createVoiceRoutes(ctx: PluginContext) {
       const audioFormat = (format as "mp3" | "opus" | "wav" | "aac" | "flac") ?? "mp3";
       const audioStream = await ttsProvider.speak(responseText, { speaker, format: audioFormat, speed });
 
-      const mimeTypes: Record<string, string> = { mp3: "audio/mpeg", opus: "audio/opus", wav: "audio/wav", aac: "audio/aac", flac: "audio/flac" };
-
       return new Response(audioStream, {
         headers: {
-          "Content-Type": mimeTypes[audioFormat] ?? "audio/mpeg",
+          "Content-Type": AUDIO_MIME_TYPES[audioFormat] ?? "audio/mpeg",
           "Transfer-Encoding": "chunked",
           "X-Transcription": encodeURIComponent(transcription.text),
           "X-Response-Text": encodeURIComponent(responseText),
@@ -229,6 +240,7 @@ export function createVoiceRoutes(ctx: PluginContext) {
       request: { params: z.object({ id: z.string() }) },
       responses: { 200: { description: "Audio file" }, 404: { description: "Audio not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } } },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const id = c.req.param("id");
       const result = await ctx.storage.audio.getAudio(id);

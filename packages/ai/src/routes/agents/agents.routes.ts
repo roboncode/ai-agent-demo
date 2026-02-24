@@ -105,6 +105,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         404: { description: "Agent not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     ((c: any) => {
       const name = c.req.param("agentName");
       const agent = ctx.agents.get(name);
@@ -120,7 +121,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         defaultFormat: agent.defaultFormat,
         formats,
         toolNames: agent.toolNames,
-        systemPrompt: ctx.agents.getResolvedPrompt(name)!,
+        systemPrompt: ctx.agents.getResolvedPrompt(name) ?? "",
         isDefault: !ctx.agents.hasPromptOverride(name),
         actions: agent.actions?.map((act) => ({
           name: act.name, method: act.method, summary: act.summary, description: act.description,
@@ -153,6 +154,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         404: { description: "Agent not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const name = c.req.param("agentName");
       const agent = ctx.agents.get(name);
@@ -169,7 +171,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
 
       return c.json({
         name,
-        systemPrompt: ctx.agents.getResolvedPrompt(name)!,
+        systemPrompt: ctx.agents.getResolvedPrompt(name) ?? "",
         isDefault: !ctx.agents.hasPromptOverride(name),
       });
     }) as any,
@@ -222,6 +224,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         404: { description: "Agent or action not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const agentName = c.req.param("agentName");
       const actionName = c.req.param("action");
@@ -251,6 +254,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         404: { description: "Agent not found", content: { "application/json": { schema: z.object({ error: z.string() }) } } },
       },
     }),
+    // hono/zod-openapi handler type mismatch
     (async (c: any) => {
       const name = c.req.param("agentName");
       const agent = ctx.agents.get(name);
@@ -264,7 +268,7 @@ export function createAgentsRoutes(ctx: PluginContext) {
         return c.json({ error: `Agent "${name}" does not support format "${format}". Supported: ${supported.join(", ")}` }, 400);
       }
 
-      const systemPrompt = ctx.agents.getResolvedPrompt(name)!;
+      const systemPrompt = ctx.agents.getResolvedPrompt(name) ?? "";
 
       let memoryContext: string | undefined;
       try {

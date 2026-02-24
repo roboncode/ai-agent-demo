@@ -95,8 +95,9 @@ function bridgeBusToStream(bus: AgentEventBus | undefined, writer: StreamWriter,
     if (event.type === BUS_EVENTS.TOOL_CALL && data.tool && !data.toolName) data = { ...data, toolName: data.tool };
     if (event.type === BUS_EVENTS.TOOL_RESULT && data.tool && !data.toolName) data = { ...data, toolName: data.tool };
     if (event.type === BUS_EVENTS.TOOL_RESULT) {
-      const toolName = (data as any).toolName ?? (data as any).tool;
-      const result = (data as any).result;
+      const rec = data as Record<string, unknown>;
+      const toolName = (rec.toolName ?? rec.tool) as string;
+      const result = rec.result;
       const extracted = cardRegistry.extract(toolName, result);
       cards.push(...extracted);
     }
@@ -211,13 +212,15 @@ async function buildSystemPrompt(ctx: PluginContext, basePrompt: string, allowed
   return prompt;
 }
 
-function collectTasksFromSteps(steps: any[]): { agent: string; query: string; skills?: string[] }[] {
+function collectTasksFromSteps(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): { agent: string; query: string; skills?: string[] }[] {
   const tasks: { agent: string; query: string; skills?: string[] }[] = [];
   for (const step of steps) {
     for (const tc of step.toolCalls) {
-      if (tc.toolName === TOOL_NAMES.CREATE_TASK && (tc as any).input) {
-        const input = (tc as any).input as { agent?: string; query?: string; skills?: string[] };
-        if (input.agent && input.query) tasks.push({ agent: input.agent, query: input.query, skills: input.skills });
+      // AI SDK v6 ToolCall type doesn't expose `.input` directly
+      const input = (tc as unknown as { input: Record<string, unknown> }).input;
+      if (tc.toolName === TOOL_NAMES.CREATE_TASK && input) {
+        const typed = input as { agent?: string; query?: string; skills?: string[] };
+        if (typed.agent && typed.query) tasks.push({ agent: typed.agent, query: typed.query, skills: typed.skills });
       }
     }
   }
@@ -240,7 +243,7 @@ async function buildSynthesisContext(ctx: PluginContext, skillNames: string[]): 
   return `# Active Skills\nApply the following behavioral instructions to your response:\n\n${sections.join("\n\n")}`;
 }
 
-// ── SSE handler
+// ── SSE Handler ──────────────────────────────────────
 function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: string[], defaultAutonomous = true) {
   return async (c: Context, { systemPrompt, memoryContext }: { systemPrompt: string; memoryContext?: string }) => {
     const body = await c.req.json();
@@ -293,19 +296,22 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
             const totalUsage = mergeUsage(...subAgentUsages, synthUsageInfo);
             totalUsage.durationMs = Math.round(performance.now() - overallStart);
             await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
-          } catch (err: any) {
-            if (err.name === "AbortError" || abortSignal?.aborted) {
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) })), usage: totalUsage });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            const errName = err instanceof Error ? err.name : undefined;
+            if (errName === "AbortError" || abortSignal?.aborted) {
               await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
             } else {
-              console.error(`[orchestrator:${agentName}] approvedPlan SSE error:`, err.message ?? err);
-              await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+              console.error(`[orchestrator:${agentName}] approvedPlan SSE error:`, message);
+              await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: message });
             }
           } finally { unregisterRequest(convId); unsub(); }
         });
       });
     }
 
+    // AI SDK tool type is opaque and not directly expressible — `any` required here
     const tools: Record<string, any> = {};
     if (planMode) {
       tools[TOOL_NAMES.CREATE_TASK] = buildCreateTaskTool(ctx, allowedAgents);
@@ -381,7 +387,7 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
             const totalUsage = mergeUsage(planUsage, ...subAgentUsages, synthUsageInfo);
             totalUsage.durationMs = Math.round(performance.now() - overallStart);
             await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
-            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), usage: totalUsage });
+            await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], conversationId: convId, tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) })), usage: totalUsage });
             return;
           }
 
@@ -411,12 +417,14 @@ function buildSseHandler(ctx: PluginContext, agentName: string, allowedAgents?: 
             await writer.write(SSE_EVENTS.AGENT_END, { agent: agentName });
             await writer.write(SSE_EVENTS.DONE, { toolsUsed: [...new Set(planResult.steps.flatMap((step) => step.toolCalls).map((tc) => tc.toolName))], conversationId: convId, usage: { ...planUsage, durationMs: Math.round(performance.now() - overallStart) } });
           }
-        } catch (err: any) {
-          if (err.name === "AbortError" || abortSignal.aborted) {
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
+          const errName = err instanceof Error ? err.name : undefined;
+          if (errName === "AbortError" || abortSignal.aborted) {
             await writer.write(SSE_EVENTS.CANCELLED, { conversationId: convId });
           } else {
-            console.error(`[orchestrator:${agentName}] SSE error:`, err.message ?? err);
-            await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: err.message ?? String(err) });
+            console.error(`[orchestrator:${agentName}] SSE error:`, message);
+            await writer.write(SSE_EVENTS.ERROR, { conversationId: convId, error: message });
           }
         } finally { unregisterRequest(convId); unsub(); }
       });
@@ -443,7 +451,7 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
       const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
       const totalUsage = mergeUsage(...subAgentUsages, synthUsage);
       totalUsage.durationMs = Math.round(performance.now() - overallStart);
-      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
+      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
     }
 
     // Build system prompt including agent+skill summaries
@@ -477,7 +485,7 @@ function buildJsonHandler(ctx: PluginContext, agentName: string, allowedAgents?:
       const subAgentUsages = results.map((r) => r.result.usage).filter((u): u is UsageInfo => !!u);
       const totalUsage = mergeUsage(orchestratorUsage, ...subAgentUsages, synthUsage);
       totalUsage.durationMs = Math.round(performance.now() - startTime);
-      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], agentsUsed: [...new Set(results.map((r) => r.agent))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, 200) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
+      return c.json({ response: text, toolsUsed: [...new Set(results.flatMap((r) => r.result.toolsUsed))], agentsUsed: [...new Set(results.map((r) => r.agent))], tasks: results.map((r) => ({ agent: r.agent, query: r.query, summary: r.result.response.slice(0, DEFAULTS.SUMMARY_LENGTH_LIMIT) })), conversationId: generateConversationId(cid), usage: totalUsage }, 200);
     }
 
     // Direct routeToAgent path
